@@ -369,6 +369,10 @@ const PALETTE = [
     if (!chart) return;
     chart.options.scales.x.stacked = isStacked;
     chart.options.scales.y.stacked = isStacked;
+    /* в режиме стека заливка создаёт артефакты с нулевыми датасетами — отключаем */
+    chart.data.datasets.forEach(ds => {
+      ds.fill = !isStacked;
+    });
     chart.update();
   }
 
@@ -391,9 +395,8 @@ const PALETTE = [
   let dotCurrent  = [];   // [{ x, y, opacity }]          — текущее состояние
   let dotAnimRAF  = null;
 
-  const DOT_SPEED    = 0.18;   // коэффициент интерполяции позиции (0..1)
-  const DOT_FADE_IN  = 0.12;   // скорость появления opacity
-  const DOT_FADE_OUT = 0.10;   // скорость исчезновения opacity
+  const DOT_FADE_IN  = 0.18;   // скорость появления opacity
+  const DOT_FADE_OUT = 0.14;   // скорость исчезновения opacity
 
   function animateDots() {
     dotAnimRAF = null;
@@ -415,17 +418,10 @@ const PALETTE = [
         cur.opacity = targetOpacity;
       }
 
+      /* позиция — всегда мгновенно, без интерполяции */
       if (tgt.visible && tgt.x !== null) {
-        const dx = tgt.x - cur.x;
-        const dy = tgt.y - cur.y;
-        if (Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3) {
-          cur.x += dx * DOT_SPEED;
-          cur.y += dy * DOT_SPEED;
-          needsRedraw = true;
-        } else {
-          cur.x = tgt.x;
-          cur.y = tgt.y;
-        }
+        cur.x = tgt.x;
+        cur.y = tgt.y;
       }
     });
 
@@ -544,7 +540,7 @@ const PALETTE = [
       borderWidth:      1.5,
       pointRadius:      0,
       pointHoverRadius: 0,
-      fill:             true,   // заливка всегда включена (п.1)
+      fill:             !isStacked,
       tension:          0.35,
     }));
 
