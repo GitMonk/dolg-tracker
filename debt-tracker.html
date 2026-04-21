@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Долговой трекер</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg:             #0d0f14;
+    --surface:        #161a22;
+    --border:         rgba(255,255,255,0.07);
+    --text:           #e8eaf0;
+    --text-muted:     #6b7180;
+    --text-dim:       #3d4455;
+    --tooltip-bg:     #1c2130;
+    --tooltip-border: rgba(255,255,255,0.12);
+    --font: 'Georgia', serif;
+    --mono: 'Courier New', monospace;
+  }
+  [data-theme="light"] {
+    --bg:             #f5f4f0;
+    --surface:        #ffffff;
+    --border:         rgba(0,0,0,0.08);
+    --text:           #1a1c22;
+    --text-muted:     #7a7f8e;
+    --text-dim:       #b0b5c0;
+    --tooltip-bg:     #ffffff;
+    --tooltip-border: rgba(0,0,0,0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100vh;
+    padding: 40px 32px 60px;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  /* header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 40px;
+    opacity: 0;
+    transform: translateY(-10px);
+    animation: fadeUp 0.5s ease 0.05s forwards;
+  }
+  .header h1 {
+    font-size: 13px;
+    font-weight: normal;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+  .total-display { display: flex; align-items: baseline; gap: 10px; }
+  .total-amount {
+    font-size: 52px;
+    font-weight: normal;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .total-currency { font-size: 20px; color: var(--text-muted); }
+  .total-change   { font-size: 13px; color: #4caf7a; margin-left: 4px; font-family: var(--mono); }
+  .stats-row      { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+  .stat           { font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; }
+  .stat span      { color: var(--text); }
+
+  /* theme toggle */
+  .theme-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 4px;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .theme-btn:hover { color: var(--text); border-color: var(--text-muted); }
+
+  /* chart */
+  .chart-wrap {
+    position: relative;
+    background: var(--surface);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    padding: 28px 24px 20px;
+    margin-bottom: 28px;
+    opacity: 0;
+    transform: translateY(12px);
+    animation: fadeUp 0.55s ease 0.15s forwards;
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .chart-canvas-wrap { position: relative; width: 100%; height: 360px; }
+
+  /* tooltip */
+  .tooltip-box {
+    position: absolute;
+    background: var(--tooltip-bg);
+    border: 1px solid var(--tooltip-border);
+    border-radius: 4px;
+    padding: 12px 16px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.3s, border-color 0.3s;
+    min-width: 200px;
+    z-index: 10;
+    font-family: var(--font);
+  }
+  .tooltip-box.visible { opacity: 1; }
+  .tooltip-date  { font-size: 11px; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px; }
+  .tooltip-total { font-size: 20px; color: var(--text); margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+  .tooltip-line  { display: flex; align-items: center; justify-content: space-between; gap: 24px; font-size: 12px; color: var(--text-muted); padding: 3px 0; }
+  .tooltip-line-name { display: flex; align-items: center; gap: 7px; }
+  .tooltip-dot   { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .tooltip-val   { font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .tooltip-sep   { border-top: 1px solid var(--border); margin: 8px 0; }
+
+  /* legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; padding-top: 4px; }
+  .legend-item {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 12px; color: var(--text-muted);
+    cursor: pointer; padding: 4px 0;
+    user-select: none; transition: color 0.15s;
+  }
+  .legend-item:hover { color: var(--text); }
+  .legend-item.hidden { opacity: 0.3; }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* progress cards */
+  .progress-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .progress-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 16px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .pc-name   { font-size: 11px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+  .pc-amount { font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; margin-bottom: 10px; }
+  .pc-bar-bg { height: 2px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .pc-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+  .pc-pct    { font-size: 11px; color: var(--text-dim); margin-top: 5px; font-family: var(--mono); }
+
+  /* footer */
+  .footer-note {
+    font-size: 11px; color: var(--text-dim);
+    letter-spacing: 0.05em; margin-top: 8px;
+    opacity: 0;
+    animation: fadeUp 0.4s ease 0.55s forwards;
+  }
+  .footer-note code { font-family: var(--mono); }
+
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (max-width: 600px) {
+    body { padding: 24px 16px 48px; }
+    .total-amount { font-size: 36px; }
+    .header { flex-wrap: wrap; gap: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     НАСТРОЙКИ — редактируй только этот блок
+     CSV_URL — ссылка на опубликованную Google Таблицу
+     PALETTE — цвета для кредиторов (назначаются по порядку столбцов)
+══════════════════════════════════════════════════════ -->
+<script>
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQX2MbIoophf0l8d_DoduDod8Jb79RoRjFBdFOLBoxe4xCu-2gyS0BhV3_icspKTZbo6t0pO-XJL9KC/pub?gid=1453166312&single=true&output=csv';
+
+const PALETTE = [
+  '#4e8fff', '#7ecfa5', '#e8855a', '#c97adb',
+  '#f0c058', '#6ec6e6', '#f47ab0', '#a3d977',
+  '#ff8c69', '#b39ddb',
+];
+</script>
+<!-- ═══════════════════════════════════════════════════ -->
+
+<div class="header">
+  <div class="header-left">
+    <h1>Долговой трекер</h1>
+    <div class="total-display">
+      <span class="total-amount" id="totalNow">—</span>
+      <span class="total-currency">₽</span>
+      <span class="total-change" id="totalChange"></span>
+    </div>
+    <div class="stats-row">
+      <div class="stat">Начало: <span id="statStart">—</span></div>
+      <div class="stat">Погашено: <span id="statPaid">—</span></div>
+      <div class="stat">Прогресс: <span id="statPct">—</span></div>
+      <div class="stat">Точек данных: <span id="statPoints">—</span></div>
+    </div>
+  </div>
+  <button class="theme-btn" id="themeBtn">светлая</button>
+</div>
+
+<div class="chart-wrap">
+  <div class="chart-canvas-wrap">
+    <canvas id="debtChart" role="img" aria-label="График изменения долга по неделям в разбивке по кредиторам"></canvas>
+    <div class="tooltip-box" id="tooltipBox">
+      <div class="tooltip-date" id="ttDate"></div>
+      <div class="tooltip-total" id="ttTotal"></div>
+      <div class="tooltip-sep"></div>
+      <div id="ttLines"></div>
+    </div>
+  </div>
+  <div class="legend" id="legend" style="margin-top: 20px;"></div>
+</div>
+
+<div class="progress-section" id="progressCards"></div>
+
+<div class="footer-note" id="footerNote">
+  Загрузка данных из Google Sheets...
+</div>
+
+<script>
+(function () {
+  const fmt       = n => Math.round(n).toLocaleString('ru-RU');
+  const fmtDate   = s => {
+    const [y,m,d] = s.split('-').map(Number);
+    return new Date(y,m-1,d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  /* ── CSV parser ── */
+  function parseCSV(text) {
+    const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) return { creditors: [], entries: [] };
+
+    const headers = lines[0].split(',').map(h => h.trim());
+    const creditorLabels = headers.slice(1); // всё кроме первого столбца "date"
+
+    const creditors = creditorLabels.map((label, i) => ({
+      label,
+      color: PALETTE[i % PALETTE.length],
+    }));
+
+    const entries = lines.slice(1).map(line => {
+      const cols = line.split(',').map(c => c.trim());
+      const entry = { date: cols[0] };
+      creditorLabels.forEach((label, i) => {
+        entry[label] = parseFloat(cols[i + 1]) || 0;
+      });
+      return entry;
+    });
+
+    return { creditors, entries };
+  }
+
+  /* ── theme ── */
+  const html     = document.documentElement;
+  const themeBtn = document.getElementById('themeBtn');
+  let isDark = localStorage.getItem('debt-tracker-theme') !== 'light';
+  let chart  = null;
+
+  function themeColors() {
+    return isDark
+      ? { grid: 'rgba(255,255,255,0.04)', axis: 'rgba(255,255,255,0.08)', tick: '#4a5168', dotFill: '#161a22', crosshair: 'rgba(255,255,255,0.18)' }
+      : { grid: 'rgba(0,0,0,0.04)',       axis: 'rgba(0,0,0,0.10)',       tick: '#a0a5b0', dotFill: '#ffffff', crosshair: 'rgba(0,0,0,0.15)' };
+  }
+
+  function applyTheme() {
+    html.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    themeBtn.textContent = isDark ? 'светлая' : 'тёмная';
+    localStorage.setItem('debt-tracker-theme', isDark ? 'dark' : 'light');
+    if (!chart) return;
+    const c = themeColors();
+    chart.options.scales.x.ticks.color  = c.tick;
+    chart.options.scales.x.grid.color   = c.grid;
+    chart.options.scales.x.border.color = c.axis;
+    chart.options.scales.y.ticks.color  = c.tick;
+    chart.options.scales.y.grid.color   = c.grid;
+    chart.options.scales.y.border.color = c.axis;
+    chart.data.datasets.forEach((ds, i) => {
+      ds.backgroundColor = ds.borderColor + (isDark ? '22' : '18');
+    });
+    chart.update('none');
+  }
+
+  if (!isDark) applyTheme();
+  themeBtn.addEventListener('click', () => { isDark = !isDark; applyTheme(); });
+
+  /* ── crosshair plugin ── */
+  let crosshairX = null;
+  let crosshairY = null;
+
+  Chart.register({
+    id: 'crosshair',
+    afterDraw(ch) {
+      if (crosshairX === null || crosshairY === null) return;
+      const { ctx, chartArea: { bottom } } = ch;
+      const c = themeColors();
+      ctx.save();
+      ctx.setLineDash([4, 5]);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = c.crosshair;
+      ctx.beginPath();
+      ctx.moveTo(crosshairX, bottom);
+      ctx.lineTo(crosshairX, crosshairY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const idx = ch.getDatasetMeta(0).data.findIndex(pt => Math.abs(pt.x - crosshairX) < 1);
+      if (idx !== -1) {
+        ch.data.datasets.forEach((ds, di) => {
+          if (!ch.isDatasetVisible(di)) return;
+          const pt = ch.getDatasetMeta(di).data[idx];
+          if (!pt) return;
+          ctx.beginPath();
+          ctx.arc(crosshairX, pt.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle   = c.dotFill;
+          ctx.fill();
+          ctx.strokeStyle = ds.borderColor;
+          ctx.lineWidth   = 1.5;
+          ctx.stroke();
+        });
+      }
+      ctx.restore();
+    }
+  });
+
+  /* ── render ── */
+  function render({ creditors, entries }) {
+    const keys   = creditors.map(c => c.label);
+    const totals = entries.map(e => keys.reduce((s, k) => s + (e[k]||0), 0));
+    const first  = totals[0], last = totals[totals.length - 1];
+    const paid   = first - last;
+    const pct    = first > 0 ? Math.round(paid / first * 100) : 0;
+
+    document.getElementById('totalNow').textContent    = fmt(last);
+    document.getElementById('totalChange').textContent = paid > 0 ? `↓ −${fmt(paid)} ₽` : '';
+    document.getElementById('statStart').textContent   = fmt(first) + ' ₽';
+    document.getElementById('statPaid').textContent    = fmt(paid)  + ' ₽';
+    document.getElementById('statPct').textContent     = pct + '%';
+    document.getElementById('statPoints').textContent  = entries.length;
+
+    const tooltipBox = document.getElementById('tooltipBox');
+    const ttDate     = document.getElementById('ttDate');
+    const ttTotal    = document.getElementById('ttTotal');
+    const ttLines    = document.getElementById('ttLines');
+
+    const labels   = entries.map(e => fmtDate(e.date));
+    const datasets = creditors.map(cr => ({
+      label: cr.label,
+      data: entries.map(e => e[cr.label]||0),
+      borderColor: cr.color,
+      backgroundColor: cr.color + '22',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      fill: true,
+      tension: 0.35,
+    }));
+
+    const c0 = themeColors();
+    chart = new Chart(document.getElementById('debtChart'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 900, easing: 'easeOutQuart', x: { from: 0 } },
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false }, tooltip: { enabled: false }, crosshair: {} },
+        scales: {
+          x: {
+            ticks:  { color: c0.tick, font: { size: 11, family: 'Georgia, serif' }, maxTicksLimit: 10, maxRotation: 0 },
+            grid:   { color: c0.grid },
+            border: { color: c0.axis },
+          },
+          y: {
+            ticks:  { color: c0.tick, font: { size: 11, family: 'Courier New, monospace' }, callback: v => fmt(v) + ' ₽', maxTicksLimit: 6 },
+            grid:   { color: c0.grid },
+            border: { color: c0.axis, dash: [4,4] },
+            min: 0,
+          },
+        },
+        onHover: (evt, elems, ch) => {
+          if (!elems.length) {
+            tooltipBox.classList.remove('visible');
+            crosshairX = null; crosshairY = null;
+            ch.draw(); return;
+          }
+          crosshairX = elems[0].element.x;
+          crosshairY = Math.min(...ch.data.datasets.map((_, di) => {
+            if (!ch.isDatasetVisible(di)) return Infinity;
+            return ch.getDatasetMeta(di).data[elems[0].index]?.y ?? Infinity;
+          }));
+          ch.draw();
+
+          const idx   = elems[0].index;
+          const entry = entries[idx];
+          const total = totals[idx];
+          ttDate.textContent  = fmtDate(entry.date);
+          ttTotal.textContent = fmt(total) + ' ₽';
+          ttLines.innerHTML   = creditors.map(cr => {
+            const v = entry[cr.label]||0;
+            if (v === 0 && creditors.every(c => (entry[c.label]||0) === 0)) return '';
+            return `<div class="tooltip-line">
+              <span class="tooltip-line-name">
+                <span class="tooltip-dot" style="background:${cr.color}"></span>
+                ${cr.label}
+              </span>
+              <span class="tooltip-val">${fmt(v)} ₽</span>
+            </div>`;
+          }).join('');
+
+          const xPos = elems[0].element.x, gap = 14, wrapW = ch.canvas.offsetWidth;
+          tooltipBox.style.left = '-9999px';
+          tooltipBox.classList.add('visible');
+          const ttW = tooltipBox.getBoundingClientRect().width;
+          const sr = wrapW - xPos - gap, sl = xPos - gap;
+          let left;
+          if      (sr >= ttW) left = xPos + gap;
+          else if (sl >= ttW) left = xPos - gap - ttW;
+          else left = sr >= sl ? xPos + gap : xPos - gap - ttW;
+          tooltipBox.style.left = left + 'px';
+          tooltipBox.style.top  = '20px';
+        },
+      },
+    });
+
+    document.getElementById('debtChart').parentElement.addEventListener('mouseleave', () => {
+      tooltipBox.classList.remove('visible');
+      crosshairX = null; crosshairY = null;
+      chart.draw();
+    });
+
+    /* legend */
+    const legendEl = document.getElementById('legend');
+    legendEl.innerHTML = '';
+    const hidden = {};
+    creditors.forEach((cr, i) => {
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      item.innerHTML = `<span class="legend-swatch" style="background:${cr.color}"></span>${cr.label}`;
+      item.addEventListener('click', () => {
+        hidden[cr.label] = !hidden[cr.label];
+        chart.setDatasetVisibility(i, !hidden[cr.label]);
+        chart.update();
+        item.classList.toggle('hidden', !!hidden[cr.label]);
+      });
+      legendEl.appendChild(item);
+    });
+
+    /* progress cards */
+    const cardsEl   = document.getElementById('progressCards');
+    cardsEl.innerHTML = '';
+    const lastEntry  = entries[entries.length - 1];
+    const firstEntry = entries[0];
+    creditors.forEach((cr, i) => {
+      const start   = firstEntry[cr.label]||0;
+      const now     = lastEntry[cr.label]||0;
+      const pctPaid = start > 0 ? Math.round((start - now) / start * 100) : 100;
+      const card    = document.createElement('div');
+      card.className = 'progress-card';
+      card.style.animation = `fadeUp 0.45s ease ${0.28 + i * 0.07}s forwards`;
+      card.innerHTML = `
+        <div class="pc-name">${cr.label}</div>
+        <div class="pc-amount">${fmt(now)} ₽</div>
+        <div class="pc-bar-bg"><div class="pc-bar-fill" style="width:${pctPaid}%;background:${cr.color}"></div></div>
+        <div class="pc-pct">${pctPaid}% погашено</div>`;
+      cardsEl.appendChild(card);
+    });
+
+    document.getElementById('footerNote').textContent =
+      'Данные из Google Sheets. Обновлённые данные появятся после перезагрузки страницы.';
+  }
+
+  /* ── fetch CSV ── */
+  fetch(CSV_URL)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+    .then(text => render(parseCSV(text)))
+    .catch(err => {
+      document.getElementById('footerNote').textContent = 'Не удалось загрузить данные: ' + err.message;
+      console.error(err);
+    });
+
+})();
+</script>
+</body>
+</html>
