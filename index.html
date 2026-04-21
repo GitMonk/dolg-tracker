@@ -40,7 +40,6 @@
     transition: background 0.3s, color 0.3s;
   }
 
-  /* header */
   .header {
     display: flex;
     justify-content: space-between;
@@ -73,7 +72,6 @@
   .stat           { font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; }
   .stat span      { color: var(--text); }
 
-  /* theme toggle */
   .controls {
     display: flex;
     flex-direction: column;
@@ -87,7 +85,7 @@
     gap: 8px;
     align-items: center;
   }
-  .theme-btn, .refresh-btn {
+  .theme-btn, .refresh-btn, .stack-btn {
     background: none;
     border: 1px solid var(--border);
     border-radius: 20px;
@@ -98,9 +96,18 @@
     font-family: var(--font);
     letter-spacing: 0.06em;
     white-space: nowrap;
-    transition: color 0.2s, border-color 0.2s;
+    transition: color 0.2s, border-color 0.2s, background 0.2s;
   }
-  .theme-btn:hover, .refresh-btn:hover { color: var(--text); border-color: var(--text-muted); }
+  .theme-btn:hover, .refresh-btn:hover, .stack-btn:hover {
+    color: var(--text);
+    border-color: var(--text-muted);
+  }
+  /* Активное состояние кнопки стека */
+  .stack-btn.active {
+    color: var(--text);
+    border-color: var(--text-muted);
+    background: var(--border);
+  }
   .refresh-btn.spinning { pointer-events: none; opacity: 0.5; }
   .refresh-btn.spinning .icon { display: inline-block; animation: spin 0.7s linear infinite; }
   .last-updated {
@@ -112,7 +119,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* chart */
   .chart-wrap {
     position: relative;
     background: var(--surface);
@@ -127,7 +133,6 @@
   }
   .chart-canvas-wrap { position: relative; width: 100%; height: 360px; }
 
-  /* tooltip */
   .tooltip-box {
     position: absolute;
     background: var(--tooltip-bg);
@@ -150,7 +155,6 @@
   .tooltip-val   { font-family: var(--mono); font-size: 12px; color: var(--text); }
   .tooltip-sep   { border-top: 1px solid var(--border); margin: 8px 0; }
 
-  /* legend */
   .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; padding-top: 4px; }
   .legend-item {
     display: flex; align-items: center; gap: 7px;
@@ -162,7 +166,6 @@
   .legend-item.hidden { opacity: 0.3; }
   .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 
-  /* progress cards */
   .progress-section {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -184,7 +187,6 @@
   .pc-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
   .pc-pct    { font-size: 11px; color: var(--text-dim); margin-top: 5px; font-family: var(--mono); }
 
-  /* footer */
   .footer-note {
     font-size: 11px; color: var(--text-dim);
     letter-spacing: 0.05em; margin-top: 8px;
@@ -206,11 +208,6 @@
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════
-     НАСТРОЙКИ — редактируй только этот блок
-     CSV_URL — ссылка на опубликованную Google Таблицу
-     PALETTE — цвета для кредиторов (назначаются по порядку столбцов)
-══════════════════════════════════════════════════════ -->
 <script>
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQX2MbIoophf0l8d_DoduDod8Jb79RoRjFBdFOLBoxe4xCu-2gyS0BhV3_icspKTZbo6t0pO-XJL9KC/pub?gid=1453166312&single=true&output=csv';
 
@@ -220,7 +217,6 @@ const PALETTE = [
   '#ff8c69', '#b39ddb',
 ];
 </script>
-<!-- ═══════════════════════════════════════════════════ -->
 
 <div class="header">
   <div class="header-left">
@@ -231,7 +227,7 @@ const PALETTE = [
       <span class="total-change" id="totalChange"></span>
     </div>
     <div class="stats-row">
-      <div class="stat">Начало: <span id="statStart">—</span></div>
+      <div class="stat">Максимум: <span id="statStart">—</span></div>
       <div class="stat">Погашено: <span id="statPaid">—</span></div>
       <div class="stat">Прогресс: <span id="statPct">—</span></div>
       <div class="stat">Точек данных: <span id="statPoints">—</span></div>
@@ -239,6 +235,7 @@ const PALETTE = [
   </div>
   <div class="controls">
     <div class="controls-row">
+      <button class="stack-btn" id="stackBtn">стек</button>
       <button class="theme-btn" id="themeBtn">светлая</button>
       <button class="refresh-btn" id="refreshBtn"><span class="icon">↻</span> обновить</button>
     </div>
@@ -267,34 +264,71 @@ const PALETTE = [
 
 <script>
 (function () {
-  const fmt       = n => Math.round(n).toLocaleString('ru-RU');
-  const fmtDate   = s => {
-    const [y,m,d] = s.split('-').map(Number);
-    return new Date(y,m-1,d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
-  };
+  const fmt = n => Math.round(n).toLocaleString('ru-RU');
 
-  /* ── CSV parser ── */
+  /* ── парсинг дат ── */
+  function parseDate(s) {
+    if (!s) return null;
+    s = s.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const [y, m, d] = s.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      return isNaN(dt.getTime()) ? null : dt;
+    }
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) {
+      const [d, m, y] = s.split('.').map(Number);
+      const dt = new Date(y, m - 1, d);
+      return isNaN(dt.getTime()) ? null : dt;
+    }
+    const dt = new Date(s);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+
+  function fmtDate(s) {
+    const dt = parseDate(s);
+    if (!dt) return s;
+    return dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  /* ── CSV-парсер с поддержкой кавычек ── */
+  function parseCSVLine(line) {
+    const result = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i++; }
+          else inQuotes = false;
+        } else {
+          cur += ch;
+        }
+      } else {
+        if (ch === '"')      inQuotes = true;
+        else if (ch === ',') { result.push(cur.trim()); cur = ''; }
+        else                 cur += ch;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
   function parseCSV(text) {
     const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length < 2) return { creditors: [], entries: [] };
-
-    const headers = lines[0].split(',').map(h => h.trim());
-    const creditorLabels = headers.slice(1); // всё кроме первого столбца "date"
-
-    const creditors = creditorLabels.map((label, i) => ({
-      label,
-      color: PALETTE[i % PALETTE.length],
-    }));
-
-    const entries = lines.slice(1).map(line => {
-      const cols = line.split(',').map(c => c.trim());
+    const headers        = parseCSVLine(lines[0]);
+    const creditorLabels = headers.slice(1);
+    const creditors      = creditorLabels.map((label, i) => ({ label, color: PALETTE[i % PALETTE.length] }));
+    const entries        = lines.slice(1).map(line => {
+      const cols  = parseCSVLine(line);
       const entry = { date: cols[0] };
       creditorLabels.forEach((label, i) => {
-        entry[label] = parseFloat(cols[i + 1]) || 0;
+        const raw    = (cols[i + 1] || '').replace(/\s/g, '');
+        entry[label] = parseFloat(raw) || 0;
       });
       return entry;
     });
-
     return { creditors, entries };
   }
 
@@ -307,7 +341,7 @@ const PALETTE = [
   function themeColors() {
     return isDark
       ? { grid: 'rgba(255,255,255,0.04)', axis: 'rgba(255,255,255,0.08)', tick: '#4a5168', dotFill: '#161a22', crosshair: 'rgba(255,255,255,0.18)' }
-      : { grid: 'rgba(0,0,0,0.04)',       axis: 'rgba(0,0,0,0.10)',       tick: '#a0a5b0', dotFill: '#ffffff', crosshair: 'rgba(0,0,0,0.15)' };
+      : { grid: 'rgba(0,0,0,0.04)',       axis: 'rgba(0,0,0,0.10)',       tick: '#a0a5b0', dotFill: '#ffffff', crosshair: 'rgba(0,0,0,0.15)'       };
   }
 
   function applyTheme() {
@@ -322,7 +356,7 @@ const PALETTE = [
     chart.options.scales.y.ticks.color  = c.tick;
     chart.options.scales.y.grid.color   = c.grid;
     chart.options.scales.y.border.color = c.axis;
-    chart.data.datasets.forEach((ds, i) => {
+    chart.data.datasets.forEach(ds => {
       ds.backgroundColor = ds.borderColor + (isDark ? '22' : '18');
     });
     chart.update('none');
@@ -331,35 +365,46 @@ const PALETTE = [
   if (!isDark) applyTheme();
   themeBtn.addEventListener('click', () => { isDark = !isDark; applyTheme(); });
 
-  /* ── load & refresh ── */
-  function loadData() {
-    const refreshBtn = document.getElementById('refreshBtn');
-    const lastUpdated = document.getElementById('lastUpdated');
-    refreshBtn.classList.add('spinning');
+  /* ── stack state ── */
+  const stackBtn = document.getElementById('stackBtn');
+  let isStacked  = localStorage.getItem('debt-tracker-stack') === 'true';
 
-    if (chart) { chart.destroy(); chart = null; }
-
-    fetch(CSV_URL + '&t=' + Date.now())
-      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-      .then(text => {
-        render(parseCSV(text));
-        const now = new Date();
-        const t = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-        const d = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-        lastUpdated.textContent = `обновлено ${d} в ${t}`;
-        refreshBtn.classList.remove('spinning');
-      })
-      .catch(err => {
-        document.getElementById('footerNote').textContent = 'Не удалось загрузить данные: ' + err.message;
-        refreshBtn.classList.remove('spinning');
-        console.error(err);
-      });
+  function applyStackBtn() {
+    stackBtn.classList.toggle('active', isStacked);
+    stackBtn.textContent = isStacked ? 'стек ✓' : 'стек';
   }
 
-  document.getElementById('refreshBtn').addEventListener('click', loadData);
+  function applyStack() {
+    if (!chart) return;
 
-  let crosshairX = null;
-  let crosshairY = null;
+    // Переключаем stacked на осях
+    chart.options.scales.x.stacked = isStacked;
+    chart.options.scales.y.stacked = isStacked;
+
+    // Переключаем fill у каждого датасета:
+    // stacked=true  → fill: true (заливка до предыдущей линии / нуля)
+    // stacked=false → fill: false (только линия)
+
+    // fill не трогаем — он всегда true    
+    //    chart.data.datasets.forEach(ds => {
+    //      ds.fill = isStacked;
+    // });
+
+    chart.update();
+  }
+
+  stackBtn.addEventListener('click', () => {
+    isStacked = !isStacked;
+    localStorage.setItem('debt-tracker-stack', isStacked);
+    applyStackBtn();
+    applyStack();
+  });
+
+  /* ── crosshair ── */
+  let mouseleaveHandler = null;
+  let crosshairX        = null;
+  let crosshairY        = null;
+  let crosshairIndex    = null;
 
   Chart.register({
     id: 'crosshair',
@@ -369,18 +414,17 @@ const PALETTE = [
       const c = themeColors();
       ctx.save();
       ctx.setLineDash([4, 5]);
-      ctx.lineWidth = 1;
+      ctx.lineWidth   = 1;
       ctx.strokeStyle = c.crosshair;
       ctx.beginPath();
       ctx.moveTo(crosshairX, bottom);
       ctx.lineTo(crosshairX, crosshairY);
       ctx.stroke();
       ctx.setLineDash([]);
-      const idx = ch.getDatasetMeta(0).data.findIndex(pt => Math.abs(pt.x - crosshairX) < 1);
-      if (idx !== -1) {
+      if (crosshairIndex !== null) {
         ch.data.datasets.forEach((ds, di) => {
           if (!ch.isDatasetVisible(di)) return;
-          const pt = ch.getDatasetMeta(di).data[idx];
+          const pt = ch.getDatasetMeta(di).data[crosshairIndex];
           if (!pt) return;
           ctx.beginPath();
           ctx.arc(crosshairX, pt.y, 4, 0, Math.PI * 2);
@@ -395,20 +439,54 @@ const PALETTE = [
     }
   });
 
-  loadData();
+  /* ── load ── */
+  function loadData() {
+    const refreshBtn  = document.getElementById('refreshBtn');
+    const lastUpdated = document.getElementById('lastUpdated');
+    refreshBtn.classList.add('spinning');
+
+    if (chart) { chart.destroy(); chart = null; }
+
+    crosshairX = crosshairY = crosshairIndex = null;
+
+    const canvasParent = document.getElementById('debtChart').parentElement;
+    if (mouseleaveHandler) {
+      canvasParent.removeEventListener('mouseleave', mouseleaveHandler);
+      mouseleaveHandler = null;
+    }
+
+    fetch(CSV_URL, { cache: 'no-store' })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(text => {
+        render(parseCSV(text));
+        const now = new Date();
+        const t   = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const d   = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+        lastUpdated.textContent = `обновлено ${d} в ${t}`;
+        refreshBtn.classList.remove('spinning');
+      })
+      .catch(err => {
+        document.getElementById('footerNote').textContent = 'Не удалось загрузить данные: ' + err.message;
+        refreshBtn.classList.remove('spinning');
+        console.error(err);
+      });
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', loadData);
 
   /* ── render ── */
   function render({ creditors, entries }) {
-    const keys   = creditors.map(c => c.label);
-    const totals = entries.map(e => keys.reduce((s, k) => s + (e[k]||0), 0));
-    const first  = totals[0], last = totals[totals.length - 1];
-    const paid   = first - last;
-    const pct    = first > 0 ? Math.round(paid / first * 100) : 0;
+    const keys     = creditors.map(c => c.label);
+    const totals   = entries.map(e => keys.reduce((s, k) => s + (e[k] || 0), 0));
+    const maxTotal = Math.max(...totals);
+    const last     = totals[totals.length - 1];
+    const paid     = maxTotal - last;
+    const pct      = maxTotal > 0 ? Math.round(paid / maxTotal * 100) : 0;
 
     document.getElementById('totalNow').textContent    = fmt(last);
     document.getElementById('totalChange').textContent = paid > 0 ? `↓ −${fmt(paid)} ₽` : '';
-    document.getElementById('statStart').textContent   = fmt(first) + ' ₽';
-    document.getElementById('statPaid').textContent    = fmt(paid)  + ' ₽';
+    document.getElementById('statStart').textContent   = fmt(maxTotal) + ' ₽';
+    document.getElementById('statPaid').textContent    = fmt(paid)     + ' ₽';
     document.getElementById('statPct').textContent     = pct + '%';
     document.getElementById('statPoints').textContent  = entries.length;
 
@@ -418,62 +496,72 @@ const PALETTE = [
     const ttLines    = document.getElementById('ttLines');
 
     const labels   = entries.map(e => fmtDate(e.date));
+    const c0       = themeColors();
+
     const datasets = creditors.map(cr => ({
-      label: cr.label,
-      data: entries.map(e => e[cr.label]||0),
-      borderColor: cr.color,
+      label:           cr.label,
+      data:            entries.map(e => e[cr.label] || 0),
+      borderColor:     cr.color,
       backgroundColor: cr.color + '22',
-      borderWidth: 1.5,
-      pointRadius: 0,
+      borderWidth:     1.5,
+      pointRadius:     0,
       pointHoverRadius: 0,
-      fill: true,
+      // Начальное значение fill берём из текущего состояния isStacked
+      fill:    true,
       tension: 0.35,
     }));
 
-    const c0 = themeColors();
     chart = new Chart(document.getElementById('debtChart'), {
       type: 'line',
       data: { labels, datasets },
       options: {
-        responsive: true,
+        responsive:          true,
         maintainAspectRatio: false,
-        animation: { duration: 900, easing: 'easeOutQuart', x: { from: 0 } },
-        interaction: { mode: 'index', intersect: false },
-        plugins: { legend: { display: false }, tooltip: { enabled: false }, crosshair: {} },
+        animation:           { duration: 900, easing: 'easeOutQuart', x: { from: 0 } },
+        interaction:         { mode: 'index', intersect: false },
+        plugins: {
+          legend:  { display: false },
+          tooltip: { enabled: false },
+        },
         scales: {
           x: {
-            ticks:  { color: c0.tick, font: { size: 11, family: 'Georgia, serif' }, maxTicksLimit: 10, maxRotation: 0 },
-            grid:   { color: c0.grid },
-            border: { color: c0.axis },
+            stacked: isStacked,
+            ticks:   { color: c0.tick, font: { size: 11, family: 'Georgia, serif' }, maxTicksLimit: 10, maxRotation: 0 },
+            grid:    { color: c0.grid },
+            border:  { color: c0.axis },
           },
           y: {
-            ticks:  { color: c0.tick, font: { size: 11, family: 'Courier New, monospace' }, callback: v => fmt(v) + ' ₽', maxTicksLimit: 6 },
-            grid:   { color: c0.grid },
-            border: { color: c0.axis, dash: [4,4] },
+            stacked: isStacked,
+            ticks:   { color: c0.tick, font: { size: 11, family: 'Courier New, monospace' }, callback: v => fmt(v) + ' ₽', maxTicksLimit: 6 },
+            grid:    { color: c0.grid },
+            border:  { color: c0.axis, dash: [4, 4] },
             min: 0,
           },
         },
         onHover: (evt, elems, ch) => {
           if (!elems.length) {
             tooltipBox.classList.remove('visible');
-            crosshairX = null; crosshairY = null;
-            ch.draw(); return;
+            crosshairX = crosshairY = crosshairIndex = null;
+            ch.draw();
+            return;
           }
-          crosshairX = elems[0].element.x;
-          crosshairY = Math.min(...ch.data.datasets.map((_, di) => {
+
+          const idx      = elems[0].index;
+          crosshairIndex = idx;
+          crosshairX     = elems[0].element.x;
+          crosshairY     = Math.min(...ch.data.datasets.map((_, di) => {
             if (!ch.isDatasetVisible(di)) return Infinity;
-            return ch.getDatasetMeta(di).data[elems[0].index]?.y ?? Infinity;
+            return ch.getDatasetMeta(di).data[idx]?.y ?? Infinity;
           }));
           ch.draw();
 
-          const idx   = elems[0].index;
           const entry = entries[idx];
           const total = totals[idx];
           ttDate.textContent  = fmtDate(entry.date);
           ttTotal.textContent = fmt(total) + ' ₽';
           ttLines.innerHTML   = creditors.map(cr => {
-            const v = entry[cr.label]||0;
-            if (v === 0 && creditors.every(c => (entry[c.label]||0) === 0)) return '';
+            const v = entry[cr.label] || 0;
+            if (v === 0 && creditors.every(c => (entry[c.label] || 0) === 0)) return '';
             return `<div class="tooltip-line">
               <span class="tooltip-line-name">
                 <span class="tooltip-dot" style="background:${cr.color}"></span>
@@ -487,7 +575,7 @@ const PALETTE = [
           tooltipBox.style.left = '-9999px';
           tooltipBox.classList.add('visible');
           const ttW = tooltipBox.getBoundingClientRect().width;
-          const sr = wrapW - xPos - gap, sl = xPos - gap;
+          const sr  = wrapW - xPos - gap, sl = xPos - gap;
           let left;
           if      (sr >= ttW) left = xPos + gap;
           else if (sl >= ttW) left = xPos - gap - ttW;
@@ -498,11 +586,14 @@ const PALETTE = [
       },
     });
 
-    document.getElementById('debtChart').parentElement.addEventListener('mouseleave', () => {
+    // mouseleave
+    const canvasParent = document.getElementById('debtChart').parentElement;
+    mouseleaveHandler  = () => {
       tooltipBox.classList.remove('visible');
-      crosshairX = null; crosshairY = null;
+      crosshairX = crosshairY = crosshairIndex = null;
       chart.draw();
-    });
+    };
+    canvasParent.addEventListener('mouseleave', mouseleaveHandler);
 
     /* legend */
     const legendEl = document.getElementById('legend');
@@ -522,29 +613,37 @@ const PALETTE = [
     });
 
     /* progress cards */
-    const cardsEl   = document.getElementById('progressCards');
+    const cardsEl  = document.getElementById('progressCards');
     cardsEl.innerHTML = '';
-    const lastEntry  = entries[entries.length - 1];
-    const firstEntry = entries[0];
+    const lastEntry = entries[entries.length - 1];
     creditors.forEach((cr, i) => {
-      const start   = firstEntry[cr.label]||0;
-      const now     = lastEntry[cr.label]||0;
-      const pctPaid = start > 0 ? Math.round((start - now) / start * 100) : 100;
+      const start   = Math.max(...entries.map(e => e[cr.label] || 0));
+      const now     = lastEntry[cr.label] || 0;
+      const pctPaid = start > 0 ? Math.round((start - now) / start * 100) : 0;
       const card    = document.createElement('div');
       card.className = 'progress-card';
-      card.style.animation = `fadeUp 0.45s ease ${0.28 + i * 0.07}s forwards`;
+      card.style.setProperty('--delay', `${0.28 + i * 0.07}s`);
       card.innerHTML = `
         <div class="pc-name">${cr.label}</div>
         <div class="pc-amount">${fmt(now)} ₽</div>
         <div class="pc-bar-bg"><div class="pc-bar-fill" style="width:${pctPaid}%;background:${cr.color}"></div></div>
         <div class="pc-pct">${pctPaid}% погашено</div>`;
       cardsEl.appendChild(card);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          card.style.animation = `fadeUp 0.45s ease var(--delay) forwards`;
+        });
+      });
     });
 
     document.getElementById('footerNote').textContent =
       'Данные из Google Sheets. Обновлённые данные появятся после перезагрузки страницы.';
+
+    // Применяем состояние кнопки стека после рендера
+    applyStackBtn();
   }
 
+  loadData();
 })();
 </script>
 </body>
