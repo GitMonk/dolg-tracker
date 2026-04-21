@@ -74,7 +74,20 @@
   .stat span      { color: var(--text); }
 
   /* theme toggle */
-  .theme-btn {
+  .controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+  .controls-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .theme-btn, .refresh-btn {
     background: none;
     border: 1px solid var(--border);
     border-radius: 20px;
@@ -85,11 +98,19 @@
     font-family: var(--font);
     letter-spacing: 0.06em;
     white-space: nowrap;
-    flex-shrink: 0;
-    margin-top: 4px;
     transition: color 0.2s, border-color 0.2s;
   }
-  .theme-btn:hover { color: var(--text); border-color: var(--text-muted); }
+  .theme-btn:hover, .refresh-btn:hover { color: var(--text); border-color: var(--text-muted); }
+  .refresh-btn.spinning { pointer-events: none; opacity: 0.5; }
+  .refresh-btn.spinning .icon { display: inline-block; animation: spin 0.7s linear infinite; }
+  .last-updated {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    letter-spacing: 0.04em;
+    text-align: right;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   /* chart */
   .chart-wrap {
@@ -216,7 +237,13 @@ const PALETTE = [
       <div class="stat">Точек данных: <span id="statPoints">—</span></div>
     </div>
   </div>
-  <button class="theme-btn" id="themeBtn">светлая</button>
+  <div class="controls">
+    <div class="controls-row">
+      <button class="theme-btn" id="themeBtn">светлая</button>
+      <button class="refresh-btn" id="refreshBtn"><span class="icon">↻</span> обновить</button>
+    </div>
+    <div class="last-updated" id="lastUpdated"></div>
+  </div>
 </div>
 
 <div class="chart-wrap">
@@ -304,7 +331,33 @@ const PALETTE = [
   if (!isDark) applyTheme();
   themeBtn.addEventListener('click', () => { isDark = !isDark; applyTheme(); });
 
-  /* ── crosshair plugin ── */
+  /* ── load & refresh ── */
+  function loadData() {
+    const refreshBtn = document.getElementById('refreshBtn');
+    const lastUpdated = document.getElementById('lastUpdated');
+    refreshBtn.classList.add('spinning');
+
+    if (chart) { chart.destroy(); chart = null; }
+
+    fetch(CSV_URL + '&t=' + Date.now())
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(text => {
+        render(parseCSV(text));
+        const now = new Date();
+        const t = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const d = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+        lastUpdated.textContent = `обновлено ${d} в ${t}`;
+        refreshBtn.classList.remove('spinning');
+      })
+      .catch(err => {
+        document.getElementById('footerNote').textContent = 'Не удалось загрузить данные: ' + err.message;
+        refreshBtn.classList.remove('spinning');
+        console.error(err);
+      });
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', loadData);
+
   let crosshairX = null;
   let crosshairY = null;
 
@@ -341,6 +394,8 @@ const PALETTE = [
       ctx.restore();
     }
   });
+
+  loadData();
 
   /* ── render ── */
   function render({ creditors, entries }) {
@@ -489,15 +544,6 @@ const PALETTE = [
     document.getElementById('footerNote').textContent =
       'Данные из Google Sheets. Обновлённые данные появятся после перезагрузки страницы.';
   }
-
-  /* ── fetch CSV ── */
-  fetch(CSV_URL)
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-    .then(text => render(parseCSV(text)))
-    .catch(err => {
-      document.getElementById('footerNote').textContent = 'Не удалось загрузить данные: ' + err.message;
-      console.error(err);
-    });
 
 })();
 </script>
