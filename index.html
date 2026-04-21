@@ -80,11 +80,7 @@
     flex-shrink: 0;
     margin-top: 4px;
   }
-  .controls-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
+  .controls-row { display: flex; gap: 8px; align-items: center; }
   .theme-btn, .refresh-btn, .stack-btn {
     background: none;
     border: 1px solid var(--border);
@@ -98,16 +94,8 @@
     white-space: nowrap;
     transition: color 0.2s, border-color 0.2s, background 0.2s;
   }
-  .theme-btn:hover, .refresh-btn:hover, .stack-btn:hover {
-    color: var(--text);
-    border-color: var(--text-muted);
-  }
-  /* Активное состояние кнопки стека */
-  .stack-btn.active {
-    color: var(--text);
-    border-color: var(--text-muted);
-    background: var(--border);
-  }
+  .theme-btn:hover, .refresh-btn:hover, .stack-btn:hover { color: var(--text); border-color: var(--text-muted); }
+  .stack-btn.active { color: var(--text); border-color: var(--text-muted); background: var(--border); }
   .refresh-btn.spinning { pointer-events: none; opacity: 0.5; }
   .refresh-btn.spinning .icon { display: inline-block; animation: spin 0.7s linear infinite; }
   .last-updated {
@@ -133,6 +121,7 @@
   }
   .chart-canvas-wrap { position: relative; width: 100%; height: 360px; }
 
+  /* ── тултип: transition для плавного перемещения и появления (п.2) ── */
   .tooltip-box {
     position: absolute;
     background: var(--tooltip-bg);
@@ -141,19 +130,26 @@
     padding: 12px 16px;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.15s, background 0.3s, border-color 0.3s;
+    /* плавное появление/исчезновение + перемещение */
+    transition: opacity 0.15s ease, left 0.08s ease, top 0.08s ease,
+                background 0.3s, border-color 0.3s;
     min-width: 200px;
     z-index: 10;
     font-family: var(--font);
   }
   .tooltip-box.visible { opacity: 1; }
-  .tooltip-date  { font-size: 11px; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px; }
-  .tooltip-total { font-size: 20px; color: var(--text); margin-bottom: 10px; font-variant-numeric: tabular-nums; }
-  .tooltip-line  { display: flex; align-items: center; justify-content: space-between; gap: 24px; font-size: 12px; color: var(--text-muted); padding: 3px 0; }
+  .tooltip-date   { font-size: 11px; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px; }
+  .tooltip-total  { font-size: 20px; color: var(--text); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  /* строка изменения суммы в тултипе (п.4) */
+  .tooltip-delta  { font-size: 12px; font-family: var(--mono); margin-bottom: 10px; }
+  .tooltip-delta.negative { color: #4caf7a; } /* долг уменьшился — хорошо */
+  .tooltip-delta.positive { color: #e8855a; } /* долг вырос    — плохо  */
+  .tooltip-delta.neutral  { color: var(--text-muted); }
+  .tooltip-line   { display: flex; align-items: center; justify-content: space-between; gap: 24px; font-size: 12px; color: var(--text-muted); padding: 3px 0; }
   .tooltip-line-name { display: flex; align-items: center; gap: 7px; }
-  .tooltip-dot   { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-  .tooltip-val   { font-family: var(--mono); font-size: 12px; color: var(--text); }
-  .tooltip-sep   { border-top: 1px solid var(--border); margin: 8px 0; }
+  .tooltip-dot    { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .tooltip-val    { font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .tooltip-sep    { border-top: 1px solid var(--border); margin: 8px 0; }
 
   .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; padding-top: 4px; }
   .legend-item {
@@ -193,11 +189,8 @@
     opacity: 0;
     animation: fadeUp 0.4s ease 0.55s forwards;
   }
-  .footer-note code { font-family: var(--mono); }
 
-  @keyframes fadeUp {
-    to { opacity: 1; transform: translateY(0); }
-  }
+  @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
 
   @media (max-width: 600px) {
     body { padding: 24px 16px 48px; }
@@ -247,8 +240,9 @@ const PALETTE = [
   <div class="chart-canvas-wrap">
     <canvas id="debtChart" role="img" aria-label="График изменения долга по неделям в разбивке по кредиторам"></canvas>
     <div class="tooltip-box" id="tooltipBox">
-      <div class="tooltip-date" id="ttDate"></div>
+      <div class="tooltip-date"  id="ttDate"></div>
       <div class="tooltip-total" id="ttTotal"></div>
+      <div class="tooltip-delta" id="ttDelta"></div>
       <div class="tooltip-sep"></div>
       <div id="ttLines"></div>
     </div>
@@ -257,14 +251,17 @@ const PALETTE = [
 </div>
 
 <div class="progress-section" id="progressCards"></div>
-
-<div class="footer-note" id="footerNote">
-  Загрузка данных из Google Sheets...
-</div>
+<div class="footer-note" id="footerNote">Загрузка данных из Google Sheets...</div>
 
 <script>
 (function () {
   const fmt = n => Math.round(n).toLocaleString('ru-RU');
+
+  /* ── п.3: форматирование оси Y — тысячи как «к», без ₽ ── */
+  function fmtK(v) {
+    if (Math.abs(v) >= 1000) return (v / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + 'к';
+    return String(v);
+  }
 
   /* ── парсинг дат ── */
   function parseDate(s) {
@@ -293,21 +290,18 @@ const PALETTE = [
   /* ── CSV-парсер с поддержкой кавычек ── */
   function parseCSVLine(line) {
     const result = [];
-    let cur = '';
-    let inQuotes = false;
+    let cur = '', inQuotes = false;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
       if (inQuotes) {
         if (ch === '"') {
           if (line[i + 1] === '"') { cur += '"'; i++; }
           else inQuotes = false;
-        } else {
-          cur += ch;
-        }
+        } else cur += ch;
       } else {
-        if (ch === '"')      inQuotes = true;
+        if      (ch === '"') inQuotes = true;
         else if (ch === ',') { result.push(cur.trim()); cur = ''; }
-        else                 cur += ch;
+        else cur += ch;
       }
     }
     result.push(cur.trim());
@@ -324,8 +318,7 @@ const PALETTE = [
       const cols  = parseCSVLine(line);
       const entry = { date: cols[0] };
       creditorLabels.forEach((label, i) => {
-        const raw    = (cols[i + 1] || '').replace(/\s/g, '');
-        entry[label] = parseFloat(raw) || 0;
+        entry[label] = parseFloat((cols[i + 1] || '').replace(/\s/g, '')) || 0;
       });
       return entry;
     });
@@ -356,16 +349,14 @@ const PALETTE = [
     chart.options.scales.y.ticks.color  = c.tick;
     chart.options.scales.y.grid.color   = c.grid;
     chart.options.scales.y.border.color = c.axis;
-    chart.data.datasets.forEach(ds => {
-      ds.backgroundColor = ds.borderColor + (isDark ? '22' : '18');
-    });
+    chart.data.datasets.forEach(ds => { ds.backgroundColor = ds.borderColor + (isDark ? '22' : '18'); });
     chart.update('none');
   }
 
   if (!isDark) applyTheme();
   themeBtn.addEventListener('click', () => { isDark = !isDark; applyTheme(); });
 
-  /* ── stack state ── */
+  /* ── stack ── */
   const stackBtn = document.getElementById('stackBtn');
   let isStacked  = localStorage.getItem('debt-tracker-stack') === 'true';
 
@@ -376,20 +367,8 @@ const PALETTE = [
 
   function applyStack() {
     if (!chart) return;
-
-    // Переключаем stacked на осях
     chart.options.scales.x.stacked = isStacked;
     chart.options.scales.y.stacked = isStacked;
-
-    // Переключаем fill у каждого датасета:
-    // stacked=true  → fill: true (заливка до предыдущей линии / нуля)
-    // stacked=false → fill: false (только линия)
-
-    // fill не трогаем — он всегда true    
-    //    chart.data.datasets.forEach(ds => {
-    //      ds.fill = isStacked;
-    // });
-
     chart.update();
   }
 
@@ -406,35 +385,94 @@ const PALETTE = [
   let crosshairY        = null;
   let crosshairIndex    = null;
 
+  /* ── п.2: анимация точек на графике ──
+     Храним текущие и целевые позиции точек, анимируем через rAF            */
+  let dotTargets  = [];   // [{ x, y, color, visible }]  — куда двигаться
+  let dotCurrent  = [];   // [{ x, y, opacity }]          — текущее состояние
+  let dotAnimRAF  = null;
+
+  const DOT_SPEED    = 0.18;   // коэффициент интерполяции позиции (0..1)
+  const DOT_FADE_IN  = 0.12;   // скорость появления opacity
+  const DOT_FADE_OUT = 0.10;   // скорость исчезновения opacity
+
+  function animateDots() {
+    dotAnimRAF = null;
+    if (!chart) return;
+
+    let needsRedraw = false;
+
+    dotCurrent.forEach((cur, i) => {
+      const tgt = dotTargets[i];
+      if (!tgt) return;
+
+      const targetOpacity = tgt.visible ? 1 : 0;
+      const dOpacity = targetOpacity - cur.opacity;
+
+      if (Math.abs(dOpacity) > 0.005) {
+        cur.opacity += dOpacity * (tgt.visible ? DOT_FADE_IN : DOT_FADE_OUT);
+        needsRedraw = true;
+      } else {
+        cur.opacity = targetOpacity;
+      }
+
+      if (tgt.visible && tgt.x !== null) {
+        const dx = tgt.x - cur.x;
+        const dy = tgt.y - cur.y;
+        if (Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3) {
+          cur.x += dx * DOT_SPEED;
+          cur.y += dy * DOT_SPEED;
+          needsRedraw = true;
+        } else {
+          cur.x = tgt.x;
+          cur.y = tgt.y;
+        }
+      }
+    });
+
+    if (needsRedraw) {
+      chart.draw();
+      dotAnimRAF = requestAnimationFrame(animateDots);
+    }
+  }
+
+  function scheduleDotAnim() {
+    if (!dotAnimRAF) dotAnimRAF = requestAnimationFrame(animateDots);
+  }
+
   Chart.register({
     id: 'crosshair',
     afterDraw(ch) {
-      if (crosshairX === null || crosshairY === null) return;
+      if (crosshairX === null) return;
       const { ctx, chartArea: { bottom } } = ch;
       const c = themeColors();
+
+      /* вертикальная линия */
       ctx.save();
       ctx.setLineDash([4, 5]);
       ctx.lineWidth   = 1;
       ctx.strokeStyle = c.crosshair;
       ctx.beginPath();
       ctx.moveTo(crosshairX, bottom);
-      ctx.lineTo(crosshairX, crosshairY);
+      ctx.lineTo(crosshairX, crosshairY ?? bottom);
       ctx.stroke();
       ctx.setLineDash([]);
-      if (crosshairIndex !== null) {
-        ch.data.datasets.forEach((ds, di) => {
-          if (!ch.isDatasetVisible(di)) return;
-          const pt = ch.getDatasetMeta(di).data[crosshairIndex];
-          if (!pt) return;
-          ctx.beginPath();
-          ctx.arc(crosshairX, pt.y, 4, 0, Math.PI * 2);
-          ctx.fillStyle   = c.dotFill;
-          ctx.fill();
-          ctx.strokeStyle = ds.borderColor;
-          ctx.lineWidth   = 1.5;
-          ctx.stroke();
-        });
-      }
+
+      /* анимированные точки */
+      dotCurrent.forEach((cur, i) => {
+        if (cur.opacity <= 0.01) return;
+        const ds = ch.data.datasets[i];
+        if (!ds || !ch.isDatasetVisible(i)) return;
+        ctx.globalAlpha = cur.opacity;
+        ctx.beginPath();
+        ctx.arc(cur.x, cur.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle   = c.dotFill;
+        ctx.fill();
+        ctx.strokeStyle = ds.borderColor;
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      });
+
       ctx.restore();
     }
   });
@@ -446,8 +484,9 @@ const PALETTE = [
     refreshBtn.classList.add('spinning');
 
     if (chart) { chart.destroy(); chart = null; }
-
     crosshairX = crosshairY = crosshairIndex = null;
+    dotTargets = []; dotCurrent = [];
+    if (dotAnimRAF) { cancelAnimationFrame(dotAnimRAF); dotAnimRAF = null; }
 
     const canvasParent = document.getElementById('debtChart').parentElement;
     if (mouseleaveHandler) {
@@ -460,9 +499,7 @@ const PALETTE = [
       .then(text => {
         render(parseCSV(text));
         const now = new Date();
-        const t   = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-        const d   = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-        lastUpdated.textContent = `обновлено ${d} в ${t}`;
+        lastUpdated.textContent = `обновлено ${now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} в ${now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
         refreshBtn.classList.remove('spinning');
       })
       .catch(err => {
@@ -493,23 +530,27 @@ const PALETTE = [
     const tooltipBox = document.getElementById('tooltipBox');
     const ttDate     = document.getElementById('ttDate');
     const ttTotal    = document.getElementById('ttTotal');
+    const ttDelta    = document.getElementById('ttDelta');
     const ttLines    = document.getElementById('ttLines');
 
-    const labels   = entries.map(e => fmtDate(e.date));
-    const c0       = themeColors();
+    const labels  = entries.map(e => fmtDate(e.date));
+    const c0      = themeColors();
 
     const datasets = creditors.map(cr => ({
-      label:           cr.label,
-      data:            entries.map(e => e[cr.label] || 0),
-      borderColor:     cr.color,
-      backgroundColor: cr.color + '22',
-      borderWidth:     1.5,
-      pointRadius:     0,
+      label:            cr.label,
+      data:             entries.map(e => e[cr.label] || 0),
+      borderColor:      cr.color,
+      backgroundColor:  cr.color + '22',
+      borderWidth:      1.5,
+      pointRadius:      0,
       pointHoverRadius: 0,
-      // Начальное значение fill берём из текущего состояния isStacked
-      fill:    true,
-      tension: 0.35,
+      fill:             true,   // заливка всегда включена (п.1)
+      tension:          0.35,
     }));
+
+    /* инициализируем состояние точек */
+    dotTargets  = creditors.map(() => ({ x: 0, y: 0, visible: false }));
+    dotCurrent  = creditors.map(() => ({ x: 0, y: 0, opacity: 0 }));
 
     chart = new Chart(document.getElementById('debtChart'), {
       type: 'line',
@@ -532,7 +573,8 @@ const PALETTE = [
           },
           y: {
             stacked: isStacked,
-            ticks:   { color: c0.tick, font: { size: 11, family: 'Courier New, monospace' }, callback: v => fmt(v) + ' ₽', maxTicksLimit: 6 },
+            /* п.3: тысячи как «к», без символа ₽ */
+            ticks:   { color: c0.tick, font: { size: 11, family: 'Courier New, monospace' }, callback: v => fmtK(v), maxTicksLimit: 6 },
             grid:    { color: c0.grid },
             border:  { color: c0.axis, dash: [4, 4] },
             min: 0,
@@ -540,8 +582,12 @@ const PALETTE = [
         },
         onHover: (evt, elems, ch) => {
           if (!elems.length) {
+            /* скрываем тултип */
             tooltipBox.classList.remove('visible');
             crosshairX = crosshairY = crosshairIndex = null;
+            /* гасим точки */
+            dotTargets.forEach(t => { t.visible = false; });
+            scheduleDotAnim();
             ch.draw();
             return;
           }
@@ -553,13 +599,54 @@ const PALETTE = [
             if (!ch.isDatasetVisible(di)) return Infinity;
             return ch.getDatasetMeta(di).data[idx]?.y ?? Infinity;
           }));
+
+          /* обновляем цели для точек */
+          ch.data.datasets.forEach((ds, di) => {
+            if (!ch.isDatasetVisible(di)) {
+              dotTargets[di].visible = false;
+              return;
+            }
+            const pt = ch.getDatasetMeta(di).data[idx];
+            if (!pt) { dotTargets[di].visible = false; return; }
+
+            /* если точка ещё не была видна — ставим начальную позицию сразу */
+            if (!dotTargets[di].visible) {
+              dotCurrent[di].x = pt.x;
+              dotCurrent[di].y = pt.y;
+            }
+            dotTargets[di].x       = pt.x;
+            dotTargets[di].y       = pt.y;
+            dotTargets[di].visible = true;
+          });
+          scheduleDotAnim();
           ch.draw();
 
+          /* ── тултип ── */
           const entry = entries[idx];
           const total = totals[idx];
           ttDate.textContent  = fmtDate(entry.date);
           ttTotal.textContent = fmt(total) + ' ₽';
-          ttLines.innerHTML   = creditors.map(cr => {
+
+          /* п.4: изменение суммы с прошлой точки */
+          if (idx > 0) {
+            const prevTotal = totals[idx - 1];
+            const delta     = total - prevTotal;
+            if (delta === 0) {
+              ttDelta.textContent  = '± 0 ₽';
+              ttDelta.className    = 'tooltip-delta neutral';
+            } else if (delta < 0) {
+              ttDelta.textContent  = `↓ −${fmt(Math.abs(delta))} ₽`;
+              ttDelta.className    = 'tooltip-delta negative';
+            } else {
+              ttDelta.textContent  = `↑ +${fmt(delta)} ₽`;
+              ttDelta.className    = 'tooltip-delta positive';
+            }
+            ttDelta.style.display = '';
+          } else {
+            ttDelta.style.display = 'none';  // для первой точки дельты нет
+          }
+
+          ttLines.innerHTML = creditors.map(cr => {
             const v = entry[cr.label] || 0;
             if (v === 0 && creditors.every(c => (entry[c.label] || 0) === 0)) return '';
             return `<div class="tooltip-line">
@@ -571,6 +658,7 @@ const PALETTE = [
             </div>`;
           }).join('');
 
+          /* позиционирование тултипа */
           const xPos = elems[0].element.x, gap = 14, wrapW = ch.canvas.offsetWidth;
           tooltipBox.style.left = '-9999px';
           tooltipBox.classList.add('visible');
@@ -586,11 +674,13 @@ const PALETTE = [
       },
     });
 
-    // mouseleave
+    /* mouseleave */
     const canvasParent = document.getElementById('debtChart').parentElement;
     mouseleaveHandler  = () => {
       tooltipBox.classList.remove('visible');
       crosshairX = crosshairY = crosshairIndex = null;
+      dotTargets.forEach(t => { t.visible = false; });
+      scheduleDotAnim();
       chart.draw();
     };
     canvasParent.addEventListener('mouseleave', mouseleaveHandler);
@@ -629,17 +719,14 @@ const PALETTE = [
         <div class="pc-bar-bg"><div class="pc-bar-fill" style="width:${pctPaid}%;background:${cr.color}"></div></div>
         <div class="pc-pct">${pctPaid}% погашено</div>`;
       cardsEl.appendChild(card);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          card.style.animation = `fadeUp 0.45s ease var(--delay) forwards`;
-        });
-      });
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        card.style.animation = `fadeUp 0.45s ease var(--delay) forwards`;
+      }));
     });
 
     document.getElementById('footerNote').textContent =
       'Данные из Google Sheets. Обновлённые данные появятся после перезагрузки страницы.';
 
-    // Применяем состояние кнопки стека после рендера
     applyStackBtn();
   }
 
