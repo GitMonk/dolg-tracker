@@ -71,6 +71,7 @@
   .stats-row      { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
   .stat           { font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; }
   .stat span      { color: var(--text); }
+  .data-warn      { color: #e8855a; letter-spacing: 0.04em; cursor: default; }
 
   .controls {
     display: flex;
@@ -224,6 +225,7 @@ const PALETTE = [
       <div class="stat">Погашено: <span id="statPaid">—</span></div>
       <div class="stat">Прогресс: <span id="statPct">—</span></div>
       <div class="stat">Точек данных: <span id="statPoints">—</span></div>
+      <div class="stat data-warn" id="dataWarn" style="display:none">⚠ ошибки в данных</div>
     </div>
   </div>
   <div class="controls">
@@ -322,13 +324,28 @@ const PALETTE = [
 
   function parseCSV(text) {
     const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length < 2) return { creditors: [], entries: [] };
+    if (lines.length < 2) return { creditors: [], entries: [], skipped: 0 };
     const headers        = parseCSVLine(lines[0]);
     const creditorLabels = headers.slice(1);
     const creditors      = creditorLabels.map((label, i) => ({ label, color: PALETTE[i % PALETTE.length] }));
-    const entries        = lines.slice(1)
+
+    let skipped = 0;
+    const entries = lines.slice(1)
       .map(line => parseCSVLine(line))
       .filter(cols => cols.length > 0 && cols[0]?.trim() !== '')
+      .filter(cols => {
+        /* пропускаем строки с невалидной датой */
+        if (!parseDate(cols[0])) { skipped++; return false; }
+
+        /* пропускаем строки, где хотя бы одна числовая ячейка — отрицательная */
+        for (let i = 1; i < cols.length; i++) {
+          const raw = (cols[i] || '').trim();
+          if (raw === '' || raw === '-') continue; /* пустая ячейка — не ошибка */
+          const n = parseNumberLocalized(raw);
+          if (n < 0) { skipped++; return false; }
+        }
+        return true;
+      })
       .map(cols => {
         const entry = { date: cols[0] };
         creditorLabels.forEach((label, i) => {
@@ -336,7 +353,8 @@ const PALETTE = [
         });
         return entry;
       });
-    return { creditors, entries };
+
+    return { creditors, entries, skipped };
   }
 
   function parseNumberLocalized(str) {
@@ -550,7 +568,7 @@ const PALETTE = [
   document.getElementById('refreshBtn').addEventListener('click', loadData);
 
   /* ── render ── */
-  function render({ creditors, entries }) {
+  function render({ creditors, entries, skipped }) {
     const keys     = creditors.map(c => c.label);
     const totals   = entries.map(e => keys.reduce((s, k) => s + (e[k] || 0), 0));
     const maxTotal = Math.max(...totals);
@@ -564,6 +582,13 @@ const PALETTE = [
     document.getElementById('statPaid').textContent    = fmt(paid)     + ' ₽';
     document.getElementById('statPct').textContent     = pct + '%';
     document.getElementById('statPoints').textContent  = entries.length;
+    const dataWarn = document.getElementById('dataWarn');
+    if (skipped > 0) {
+      dataWarn.textContent = `⚠ пропущено строк: ${skipped}`;
+      dataWarn.style.display = '';
+    } else {
+      dataWarn.style.display = 'none';
+    }
 
     const tooltipBox = document.getElementById('tooltipBox');
     const ttDate     = document.getElementById('ttDate');
