@@ -71,7 +71,7 @@
   .stats-row      { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
   .stat           { font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; }
   .stat span      { color: var(--text); }
-  .data-warn      { color: #e8855a; letter-spacing: 0.04em; cursor: default; }
+  .data-warn      { color: #e05555; letter-spacing: 0.04em; cursor: default; }
 
   .controls {
     display: flex;
@@ -337,12 +337,10 @@ const PALETTE = [
         /* пропускаем строки с невалидной датой */
         if (!parseDate(cols[0])) { skipped++; return false; }
 
-        /* пропускаем строки, где хотя бы одна числовая ячейка — отрицательная */
+        /* пропускаем строки, где числовая ячейка содержит текст или отрицательное значение */
         for (let i = 1; i < cols.length; i++) {
           const raw = (cols[i] || '').trim();
-          if (raw === '' || raw === '-') continue; /* пустая ячейка — не ошибка */
-          const n = parseNumberLocalized(raw);
-          if (n < 0) { skipped++; return false; }
+          if (!isValidCell(raw)) { skipped++; return false; }
         }
         return true;
       })
@@ -362,6 +360,16 @@ const PALETTE = [
     const cleaned = str.replace(/\s/g, '').replace(',', '.');
     const num = parseFloat(cleaned);
     return isNaN(num) ? 0 : num;
+  }
+
+  /* непустая ячейка должна быть валидным неотрицательным числом */
+  function isValidCell(raw) {
+    if (raw === '') return true; /* пусто — ок */
+    const cleaned = raw.replace(/\s/g, '').replace(',', '.');
+    const num = parseFloat(cleaned);
+    if (isNaN(num)) return false;  /* текст, символы — ошибка */
+    if (num < 0)    return false;  /* отрицательное — ошибка */
+    return true;
   }
 
   /* ── theme ── */
