@@ -81,7 +81,7 @@
     margin-top: 4px;
   }
   .controls-row { display: flex; gap: 8px; align-items: center; }
-  .theme-btn, .refresh-btn, .stack-btn {
+  .theme-btn, .refresh-btn, .stack-btn, .fill-btn {
     background: none;
     border: 1px solid var(--border);
     border-radius: 20px;
@@ -94,8 +94,8 @@
     white-space: nowrap;
     transition: color 0.2s, border-color 0.2s, background 0.2s;
   }
-  .theme-btn:hover, .refresh-btn:hover, .stack-btn:hover { color: var(--text); border-color: var(--text-muted); }
-  .stack-btn.active { color: var(--text); border-color: var(--text-muted); background: var(--border); }
+  .theme-btn:hover, .refresh-btn:hover, .stack-btn:hover, .fill-btn:hover { color: var(--text); border-color: var(--text-muted); }
+  .stack-btn.active, .fill-btn.active { color: var(--text); border-color: var(--text-muted); background: var(--border); }
   .refresh-btn.spinning { pointer-events: none; opacity: 0.5; }
   .refresh-btn.spinning .icon { display: inline-block; animation: spin 0.7s linear infinite; }
   .last-updated {
@@ -229,7 +229,8 @@ const PALETTE = [
   <div class="controls">
     <div class="controls-row">
       <button class="stack-btn" id="stackBtn">стек</button>
-      <button class="theme-btn" id="themeBtn">светлая</button>
+      <button class="fill-btn"  id="fillBtn">заливка</button>
+      <button class="theme-btn" id="themeBtn">☽</button>
       <button class="refresh-btn" id="refreshBtn"><span class="icon">↻</span> обновить</button>
     </div>
     <div class="last-updated" id="lastUpdated"></div>
@@ -359,7 +360,7 @@ const PALETTE = [
 
   function applyTheme() {
     html.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    themeBtn.textContent = isDark ? 'светлая' : 'тёмная';
+    themeBtn.textContent = isDark ? '☽' : '☀';
     localStorage.setItem('debt-tracker-theme', isDark ? 'dark' : 'light');
     if (!chart) return;
     const c = themeColors();
@@ -389,10 +390,6 @@ const PALETTE = [
     if (!chart) return;
     chart.options.scales.x.stacked = isStacked;
     chart.options.scales.y.stacked = isStacked;
-    /* в режиме стека заливка создаёт артефакты с нулевыми датасетами — отключаем */
-    chart.data.datasets.forEach(ds => {
-      ds.fill = !isStacked;
-    });
     chart.update();
   }
 
@@ -401,6 +398,31 @@ const PALETTE = [
     localStorage.setItem('debt-tracker-stack', isStacked);
     applyStackBtn();
     applyStack();
+  });
+
+  /* ── fill ── */
+  const fillBtn  = document.getElementById('fillBtn');
+  let isFilled   = localStorage.getItem('debt-tracker-fill') !== 'false';
+
+  function applyFillBtn() {
+    fillBtn.classList.toggle('active', isFilled);
+  }
+
+  function currentFill() {
+    return isFilled;
+  }
+
+  function applyFill() {
+    if (!chart) return;
+    chart.data.datasets.forEach(ds => { ds.fill = currentFill(); });
+    chart.update('none');
+  }
+
+  fillBtn.addEventListener('click', () => {
+    isFilled = !isFilled;
+    localStorage.setItem('debt-tracker-fill', isFilled);
+    applyFillBtn();
+    applyFill();
   });
 
   /* ── crosshair ── */
@@ -560,7 +582,7 @@ const PALETTE = [
       borderWidth:      1.5,
       pointRadius:      0,
       pointHoverRadius: 0,
-      fill:             !isStacked,
+      fill:             currentFill(),
       tension:          0.35,
     }));
 
@@ -744,6 +766,7 @@ const PALETTE = [
       'Данные из Google Sheets. Обновлённые данные появятся после перезагрузки страницы.';
 
     applyStackBtn();
+    applyFillBtn();
   }
 
   loadData();
