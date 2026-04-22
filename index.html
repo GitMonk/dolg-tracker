@@ -259,7 +259,9 @@ const PALETTE = [
 
   /* ── п.3: форматирование оси Y — тысячи как «к», без ₽ ── */
   function fmtK(v) {
-    if (Math.abs(v) >= 1000) return (v / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + 'к';
+    const absV = Math.abs(v);
+    const sign = v < 0 ? '-' : '';
+    if (absV >= 1000) return sign + (absV / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + 'к';
     return String(v);
   }
 
@@ -285,6 +287,15 @@ const PALETTE = [
     const dt = parseDate(s);
     if (!dt) return s;
     return dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  function fmtDateShort(s) {
+    const dt = parseDate(s);
+    if (!dt) return s;
+    const d  = String(dt.getDate()).padStart(2, '0');
+    const m  = String(dt.getMonth() + 1).padStart(2, '0');
+    const y  = String(dt.getFullYear()).slice(2);
+    return `${d}.${m}.${y}`;
   }
 
   /* ── CSV-парсер с поддержкой кавычек ── */
@@ -314,15 +325,24 @@ const PALETTE = [
     const headers        = parseCSVLine(lines[0]);
     const creditorLabels = headers.slice(1);
     const creditors      = creditorLabels.map((label, i) => ({ label, color: PALETTE[i % PALETTE.length] }));
-    const entries        = lines.slice(1).map(line => {
-      const cols  = parseCSVLine(line);
-      const entry = { date: cols[0] };
-      creditorLabels.forEach((label, i) => {
-        entry[label] = parseFloat((cols[i + 1] || '').replace(/\s/g, '')) || 0;
+    const entries        = lines.slice(1)
+      .map(line => parseCSVLine(line))
+      .filter(cols => cols.length > 0 && cols[0]?.trim() !== '')
+      .map(cols => {
+        const entry = { date: cols[0] };
+        creditorLabels.forEach((label, i) => {
+          entry[label] = parseNumberLocalized(cols[i + 1]);
+        });
+        return entry;
       });
-      return entry;
-    });
     return { creditors, entries };
+  }
+
+  function parseNumberLocalized(str) {
+    if (!str) return 0;
+    const cleaned = str.replace(/\s/g, '').replace(',', '.');
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? 0 : num;
   }
 
   /* ── theme ── */
@@ -529,7 +549,7 @@ const PALETTE = [
     const ttDelta    = document.getElementById('ttDelta');
     const ttLines    = document.getElementById('ttLines');
 
-    const labels  = entries.map(e => fmtDate(e.date));
+    const labels  = entries.map(e => fmtDateShort(e.date));
     const c0      = themeColors();
 
     const datasets = creditors.map(cr => ({
@@ -664,7 +684,7 @@ const PALETTE = [
           if      (sr >= ttW) left = xPos + gap;
           else if (sl >= ttW) left = xPos - gap - ttW;
           else left = sr >= sl ? xPos + gap : xPos - gap - ttW;
-          tooltipBox.style.left = left + 'px';
+          tooltipBox.style.left = Math.max(5, left) + 'px';
           tooltipBox.style.top  = '20px';
         },
       },
@@ -692,7 +712,7 @@ const PALETTE = [
       item.addEventListener('click', () => {
         hidden[cr.label] = !hidden[cr.label];
         chart.setDatasetVisibility(i, !hidden[cr.label]);
-        chart.update();
+        chart.update('none');
         item.classList.toggle('hidden', !!hidden[cr.label]);
       });
       legendEl.appendChild(item);
