@@ -176,7 +176,20 @@
     padding: 14px 16px;
     opacity: 0;
     transform: translateY(10px);
-    transition: background 0.3s, border-color 0.3s;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, opacity 0.2s, filter 0.2s;
+  }
+  .progress-card:hover {
+    border-color: var(--text-dim);
+    background: var(--surface);
+    filter: brightness(1.08);
+  }
+  .progress-card.ds-hidden {
+    opacity: 1;
+    filter: grayscale(1) opacity(0.38);
+  }
+  .progress-card.ds-hidden:hover {
+    filter: grayscale(0.6) opacity(0.55);
   }
   .pc-name   { font-size: 11px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
   .pc-amount { font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; margin-bottom: 10px; }
@@ -756,26 +769,36 @@ const PALETTE = [
     };
     canvasParent.addEventListener('mouseleave', mouseleaveHandler);
 
-    /* legend */
+    /* legend + cards — единое управление видимостью */
     const legendEl = document.getElementById('legend');
     legendEl.innerHTML = '';
-    const hidden = {};
+    const cardsEl  = document.getElementById('progressCards');
+    cardsEl.innerHTML = '';
+
+    const hidden     = {};
+    const cardEls    = [];
+    const legendItems = [];
+
+    function toggleDataset(i, cr) {
+      hidden[cr.label] = !hidden[cr.label];
+      chart.setDatasetVisibility(i, !hidden[cr.label]);
+      chart.update('none');
+      const isHidden = !!hidden[cr.label];
+      cardEls[i].classList.toggle('ds-hidden', isHidden);
+      legendItems[i].classList.toggle('hidden', isHidden);
+    }
+
+    /* легенда */
     creditors.forEach((cr, i) => {
       const item = document.createElement('div');
       item.className = 'legend-item';
       item.innerHTML = `<span class="legend-swatch" style="background:${cr.color}"></span>${cr.label}`;
-      item.addEventListener('click', () => {
-        hidden[cr.label] = !hidden[cr.label];
-        chart.setDatasetVisibility(i, !hidden[cr.label]);
-        chart.update('none');
-        item.classList.toggle('hidden', !!hidden[cr.label]);
-      });
+      item.addEventListener('click', () => toggleDataset(i, cr));
       legendEl.appendChild(item);
+      legendItems.push(item);
     });
 
-    /* progress cards */
-    const cardsEl  = document.getElementById('progressCards');
-    cardsEl.innerHTML = '';
+    /* карточки прогресса */
     const lastEntry = entries[entries.length - 1];
     creditors.forEach((cr, i) => {
       const start   = Math.max(...entries.map(e => e[cr.label] || 0));
@@ -789,7 +812,9 @@ const PALETTE = [
         <div class="pc-amount">${fmt(now)} ₽</div>
         <div class="pc-bar-bg"><div class="pc-bar-fill" style="width:${pctPaid}%;background:${cr.color}"></div></div>
         <div class="pc-pct">${pctPaid}% погашено</div>`;
+      card.addEventListener('click', () => toggleDataset(i, cr));
       cardsEl.appendChild(card);
+      cardEls.push(card);
       requestAnimationFrame(() => requestAnimationFrame(() => {
         card.style.animation = `fadeUp 0.45s ease var(--delay) forwards`;
       }));
