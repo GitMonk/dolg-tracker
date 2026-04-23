@@ -152,16 +152,6 @@
   .tooltip-val    { font-family: var(--mono); font-size: 12px; color: var(--text); }
   .tooltip-sep    { border-top: 1px solid var(--border); margin: 8px 0; }
 
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; padding-top: 4px; }
-  .legend-item {
-    display: flex; align-items: center; gap: 7px;
-    font-size: 12px; color: var(--text-muted);
-    cursor: pointer; padding: 4px 0;
-    user-select: none; transition: color 0.15s;
-  }
-  .legend-item:hover { color: var(--text); }
-  .legend-item.hidden { opacity: 0.3; }
-  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 
   .progress-section {
     display: grid;
@@ -263,7 +253,7 @@ const PALETTE = [
       <div id="ttLines"></div>
     </div>
   </div>
-  <div class="legend" id="legend" style="margin-top: 20px;"></div>
+
 </div>
 
 <div class="progress-section" id="progressCards"></div>
@@ -769,34 +759,22 @@ const PALETTE = [
     };
     canvasParent.addEventListener('mouseleave', mouseleaveHandler);
 
-    /* legend + cards — единое управление видимостью */
+    /* cards + legend sync — единое управление видимостью */
     const legendEl = document.getElementById('legend');
-    legendEl.innerHTML = '';
+    if (legendEl) legendEl.innerHTML = '';
     const cardsEl  = document.getElementById('progressCards');
     cardsEl.innerHTML = '';
 
-    const hidden     = {};
-    const cardEls    = [];
+    const hidden      = {};
+    const cardEls     = [];
     const legendItems = [];
 
     function toggleDataset(i, cr) {
       hidden[cr.label] = !hidden[cr.label];
       chart.setDatasetVisibility(i, !hidden[cr.label]);
       chart.update('none');
-      const isHidden = !!hidden[cr.label];
-      cardEls[i].classList.toggle('ds-hidden', isHidden);
-      legendItems[i].classList.toggle('hidden', isHidden);
+      cardEls[i].classList.toggle('ds-hidden', !!hidden[cr.label]);
     }
-
-    /* легенда */
-    creditors.forEach((cr, i) => {
-      const item = document.createElement('div');
-      item.className = 'legend-item';
-      item.innerHTML = `<span class="legend-swatch" style="background:${cr.color}"></span>${cr.label}`;
-      item.addEventListener('click', () => toggleDataset(i, cr));
-      legendEl.appendChild(item);
-      legendItems.push(item);
-    });
 
     /* карточки прогресса */
     const lastEntry = entries[entries.length - 1];
