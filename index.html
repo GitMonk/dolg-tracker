@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Долговой трекер</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js">
+</script>
 <style>
   :root {
     --bg:             #0d0f14;
@@ -490,21 +491,30 @@ const PALETTE = [
     hlAnimRAF = null;
     if (!chart) return;
     let needsRedraw = false;
+    let changed = false;
+    
     chart.data.datasets.forEach((ds, i) => {
       const target = (hlIndex === i) ? HL_WIDTH : BASE_WIDTH;
       const cur    = hlWidths[i] ?? BASE_WIDTH;
       const diff   = target - cur;
-      if (Math.abs(diff) > 0.01) {
+      if (Math.abs(diff) > 0.005) {
         hlWidths[i]    = cur + diff * HL_SPEED;
-        ds.borderWidth = hlWidths[i];
         needsRedraw    = true;
-      } else {
+        changed = true;
+      } else if (Math.abs(diff) > 0) {
         hlWidths[i]    = target;
-        ds.borderWidth = target;
+        changed = true;
       }
     });
+    
+    if (changed) {
+      chart.data.datasets.forEach((ds, i) => {
+        ds.borderWidth = hlWidths[i] ?? BASE_WIDTH;
+      });
+      chart.update('none');
+    }
+    
     if (needsRedraw) {
-      chart.draw();
       hlAnimRAF = requestAnimationFrame(animateHL);
     }
   }
