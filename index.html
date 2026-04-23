@@ -600,8 +600,23 @@ const PALETTE = [
     const paid     = maxTotal - last;
     const pct      = maxTotal > 0 ? Math.round(paid / maxTotal * 100) : 0;
 
-    document.getElementById('totalNow').textContent    = fmt(last);
-    document.getElementById('totalChange').textContent = paid > 0 ? `↓ −${fmt(paid)} ₽` : '';
+    document.getElementById('totalNow').textContent = fmt(last);
+    const changeEl = document.getElementById('totalChange');
+    if (totals.length >= 2) {
+      const delta = last - totals[totals.length - 2];
+      if (delta < 0) {
+        changeEl.textContent  = `↓ −${fmt(Math.abs(delta))} ₽`;
+        changeEl.style.color  = '#4caf7a';
+      } else if (delta > 0) {
+        changeEl.textContent  = `↑ +${fmt(delta)} ₽`;
+        changeEl.style.color  = '#e05555';
+      } else {
+        changeEl.textContent  = '± 0 ₽';
+        changeEl.style.color  = 'var(--text-muted)';
+      }
+    } else {
+      changeEl.textContent = '';
+    }
     document.getElementById('statStart').textContent   = fmt(maxTotal) + ' ₽';
     document.getElementById('statPaid').textContent    = fmt(paid)     + ' ₽';
     document.getElementById('statPct').textContent     = pct + '%';
