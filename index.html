@@ -41,13 +41,16 @@
   }
 
   .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 40px;
+    margin-bottom: 20px;
     opacity: 0;
     transform: translateY(-10px);
     animation: fadeUp 0.5s ease 0.05s forwards;
+  }
+  .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
   }
   .header h1 {
     font-size: 13px;
@@ -55,9 +58,17 @@
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--text-muted);
-    margin-bottom: 12px;
   }
-  .total-display { display: flex; align-items: baseline; gap: 10px; }
+  .stats-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px 32px 20px;
+    margin-bottom: 20px;
+    text-align: center;
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .total-display { display: flex; align-items: baseline; gap: 10px; justify-content: center; }
   .total-amount {
     font-size: 52px;
     font-weight: normal;
@@ -68,7 +79,7 @@
   }
   .total-currency { font-size: 20px; color: var(--text-muted); }
   .total-change   { font-size: 13px; color: #4caf7a; margin-left: 4px; font-family: var(--mono); }
-  .stats-row      { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+  .stats-row      { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; justify-content: center; }
   .stat           { font-size: 12px; color: var(--text-muted); letter-spacing: 0.05em; }
   .stat span      { color: var(--text); }
   .data-warn      { color: #e05555; letter-spacing: 0.04em; cursor: default; }
@@ -216,8 +227,19 @@ const PALETTE = [
 </script>
 
 <div class="header">
-  <div class="header-left">
+  <div class="header-top">
     <h1>Долговой трекер</h1>
+    <div class="controls">
+      <div class="controls-row">
+        <button class="stack-btn" id="stackBtn">стек</button>
+        <button class="fill-btn"  id="fillBtn">заливка</button>
+        <button class="theme-btn" id="themeBtn">☽</button>
+        <button class="refresh-btn" id="refreshBtn"><span class="icon">↻</span> обновить</button>
+      </div>
+      <div class="last-updated" id="lastUpdated"></div>
+    </div>
+  </div>
+  <div class="stats-panel">
     <div class="total-display">
       <span class="total-amount" id="totalNow">—</span>
       <span class="total-currency">₽</span>
@@ -230,15 +252,6 @@ const PALETTE = [
       <div class="stat">Точек данных: <span id="statPoints">—</span></div>
       <div class="stat data-warn" id="dataWarn" style="display:none">⚠ ошибки в данных</div>
     </div>
-  </div>
-  <div class="controls">
-    <div class="controls-row">
-      <button class="stack-btn" id="stackBtn">стек</button>
-      <button class="fill-btn"  id="fillBtn">заливка</button>
-      <button class="theme-btn" id="themeBtn">☽</button>
-      <button class="refresh-btn" id="refreshBtn"><span class="icon">↻</span> обновить</button>
-    </div>
-    <div class="last-updated" id="lastUpdated"></div>
   </div>
 </div>
 
