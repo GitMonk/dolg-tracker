@@ -477,7 +477,41 @@ const PALETTE = [
      Храним текущие и целевые позиции точек, анимируем через rAF            */
   let dotTargets  = [];   // [{ x, y, color, visible }]  — куда двигаться
   let dotCurrent  = [];   // [{ x, y, opacity }]          — текущее состояние
-  let dotAnimRAF  = null;
+  let dotAnimRAF    = null;
+  let hlIndex       = null;   /* индекс подсвеченного датасета (-1 = нет) */
+  let hlWidths      = [];     /* текущие анимируемые borderWidth для каждого датасета */
+  let hlAnimRAF     = null;
+
+  const HL_WIDTH    = 3.0;    /* толщина при ховере */
+  const BASE_WIDTH  = 1.5;    /* нормальная толщина */
+  const HL_SPEED    = 0.14;   /* скорость интерполяции */
+
+  function animateHL() {
+    hlAnimRAF = null;
+    if (!chart) return;
+    let needsRedraw = false;
+    chart.data.datasets.forEach((ds, i) => {
+      const target = (hlIndex === i) ? HL_WIDTH : BASE_WIDTH;
+      const cur    = hlWidths[i] ?? BASE_WIDTH;
+      const diff   = target - cur;
+      if (Math.abs(diff) > 0.01) {
+        hlWidths[i]    = cur + diff * HL_SPEED;
+        ds.borderWidth = hlWidths[i];
+        needsRedraw    = true;
+      } else {
+        hlWidths[i]    = target;
+        ds.borderWidth = target;
+      }
+    });
+    if (needsRedraw) {
+      chart.draw();
+      hlAnimRAF = requestAnimationFrame(animateHL);
+    }
+  }
+
+  function scheduleHL() {
+    if (!hlAnimRAF) hlAnimRAF = requestAnimationFrame(animateHL);
+  }
 
   const DOT_FADE_IN  = 0.18;   // скорость появления opacity
   const DOT_FADE_OUT = 0.14;   // скорость исчезновения opacity
@@ -565,8 +599,9 @@ const PALETTE = [
 
     if (chart) { chart.destroy(); chart = null; }
     crosshairX = crosshairY = crosshairIndex = null;
-    dotTargets = []; dotCurrent = [];
+    dotTargets = []; dotCurrent = []; hlWidths = []; hlIndex = null;
     if (dotAnimRAF) { cancelAnimationFrame(dotAnimRAF); dotAnimRAF = null; }
+    if (hlAnimRAF)  { cancelAnimationFrame(hlAnimRAF);  hlAnimRAF  = null; }
 
     const canvasParent = document.getElementById('debtChart').parentElement;
     if (mouseleaveHandler) {
@@ -653,6 +688,7 @@ const PALETTE = [
     /* инициализируем состояние точек */
     dotTargets  = creditors.map(() => ({ x: 0, y: 0, visible: false }));
     dotCurrent  = creditors.map(() => ({ x: 0, y: 0, opacity: 0 }));
+    hlWidths    = creditors.map(() => BASE_WIDTH);
 
     chart = new Chart(document.getElementById('debtChart'), {
       type: 'line',
@@ -819,6 +855,12 @@ const PALETTE = [
         <div class="pc-bar-bg"><div class="pc-bar-fill" style="width:${pctPaid}%;background:${cr.color}"></div></div>
         <div class="pc-pct">${pctPaid}% погашено</div>`;
       card.addEventListener('click', () => toggleDataset(i, cr));
+      card.addEventListener('mouseenter', () => {
+        if (!hidden[cr.label]) { hlIndex = i; scheduleHL(); }
+      });
+      card.addEventListener('mouseleave', () => {
+        hlIndex = null; scheduleHL();
+      });
       cardsEl.appendChild(card);
       cardEls.push(card);
       requestAnimationFrame(() => requestAnimationFrame(() => {
