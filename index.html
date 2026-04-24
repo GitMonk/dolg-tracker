@@ -36,8 +36,14 @@
     color: var(--text);
     font-family: var(--font);
     min-height: 100vh;
-    padding: 40px 32px 60px;
+    padding: 40px 0 60px;
     transition: background 0.3s, color 0.3s;
+  }
+
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 24px;
   }
 
   .header {
@@ -226,6 +232,7 @@ const PALETTE = [
 ];
 </script>
 
+<div class="container">
 <div class="header">
   <div class="header-top">
     <h1>Долговой трекер</h1>
@@ -271,6 +278,7 @@ const PALETTE = [
 
 <div class="progress-section" id="progressCards"></div>
 <div class="footer-note" id="footerNote">Загрузка данных из Google Sheets...</div>
+</div>
 
 <script>
 (function () {
