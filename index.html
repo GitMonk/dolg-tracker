@@ -478,28 +478,13 @@ const PALETTE = [
   let dotTargets  = [];   // [{ x, y, color, visible }]  — куда двигаться
   let dotCurrent  = [];   // [{ x, y, opacity }]          — текущее состояние
   let dotAnimRAF    = null;
-  let hlIndex    = null;
-  let hlAlpha    = 0;       /* текущая прозрачность оверлея (0..1) */
-  let hlAnimRAF  = null;
-  const HL_SPEED = 0.14;
-
-  function animateHL() {
-    hlAnimRAF = null;
-    if (!chart) return;
-    const target = hlIndex !== null ? 1 : 0;
-    const diff   = target - hlAlpha;
-    if (Math.abs(diff) > 0.008) {
-      hlAlpha   += diff * HL_SPEED;
-      chart.draw();
-      hlAnimRAF  = requestAnimationFrame(animateHL);
-    } else {
-      hlAlpha = target;
-      chart.draw();
+  let hlIndex       = null;   /* индекс подсвеченного датасета (-1 = нет) */
+  let /* текущие анимируемые borderWidth для каждого датасета */
+    });
+    if (needsRedraw) {
+      chart.update('none');
+      hlAnimRAF = requestAnimationFrame(animateHL);
     }
-  }
-
-  function scheduleHL() {
-    if (!hlAnimRAF) hlAnimRAF = requestAnimationFrame(animateHL);
   }
 
   const DOT_FADE_IN  = 0.18;   // скорость появления opacity
@@ -545,30 +530,9 @@ const PALETTE = [
   Chart.register({
     id: 'crosshair',
     afterDraw(ch) {
+      if (crosshairX === null) return;
       const { ctx, chartArea: { bottom } } = ch;
       const c = themeColors();
-
-      /* highlight линии при ховере на карточку — независимо от crosshair */
-      if (hlIndex !== null && hlAlpha > 0.01) {
-        const ds   = ch.data.datasets[hlIndex];
-        const meta = ch.getDatasetMeta(hlIndex);
-        if (ds && ch.isDatasetVisible(hlIndex) && meta.data.length) {
-          ctx.save();
-          ctx.globalAlpha = hlAlpha;
-          ctx.strokeStyle = ds.borderColor;
-          ctx.lineWidth   = 3.5;
-          ctx.lineJoin    = 'round';
-          ctx.lineCap     = 'round';
-          ctx.beginPath();
-          meta.data.forEach((pt, pi) => {
-            pi === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
-          });
-          ctx.stroke();
-          ctx.restore();
-        }
-      }
-
-      if (crosshairX === null) return;
 
       /* вертикальная линия */
       ctx.save();
@@ -609,9 +573,9 @@ const PALETTE = [
 
     if (chart) { chart.destroy(); chart = null; }
     crosshairX = crosshairY = crosshairIndex = null;
-    dotTargets = []; dotCurrent = []; hlIndex = null; hlAlpha = 0;
+    dotTargets = []; dotCurrent = []; hlIndex = null;
     if (dotAnimRAF) { cancelAnimationFrame(dotAnimRAF); dotAnimRAF = null; }
-    if (hlAnimRAF)  { cancelAnimationFrame(hlAnimRAF);  hlAnimRAF  = null; }
+    
 
     const canvasParent = document.getElementById('debtChart').parentElement;
     if (mouseleaveHandler) {
@@ -688,7 +652,7 @@ const PALETTE = [
       data:             entries.map(e => e[cr.label] || 0),
       borderColor:      cr.color,
       backgroundColor:  cr.color + '22',
-      borderWidth:      1.5,
+      borderWidth: (ctx) => { return ctx.datasetIndex === hlIndex ? 3.0 : 1.5; },
       pointRadius:      0,
       pointHoverRadius: 0,
       fill:             currentFill(),
@@ -698,6 +662,7 @@ const PALETTE = [
     /* инициализируем состояние точек */
     dotTargets  = creditors.map(() => ({ x: 0, y: 0, visible: false }));
     dotCurrent  = creditors.map(() => ({ x: 0, y: 0, opacity: 0 }));
+    hlWidths    = creditors.map(() => BASE_WIDTH);
 
     chart = new Chart(document.getElementById('debtChart'), {
       type: 'line',
@@ -864,12 +829,8 @@ const PALETTE = [
         <div class="pc-bar-bg"><div class="pc-bar-fill" style="width:${pctPaid}%;background:${cr.color}"></div></div>
         <div class="pc-pct">${pctPaid}% погашено</div>`;
       card.addEventListener('click', () => toggleDataset(i, cr));
-      card.addEventListener('mouseenter', () => {
-        if (!hidden[cr.label]) { hlIndex = i; scheduleHL(); }
-      });
-      card.addEventListener('mouseleave', () => {
-        hlIndex = null; scheduleHL();
-      });
+      card.addEventListener('mouseenter', () => { if (!hidden[cr.label]) { hlIndex = i; chart.update(); } });
+      card.addEventListener('mouseleave', () => { hlIndex = null; chart.update(); });
       cardsEl.appendChild(card);
       cardEls.push(card);
       requestAnimationFrame(() => requestAnimationFrame(() => {
