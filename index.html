@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Долговой трекер</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js">
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   :root {
     --bg:             #0d0f14;
@@ -479,43 +478,23 @@ const PALETTE = [
   let dotTargets  = [];   // [{ x, y, color, visible }]  — куда двигаться
   let dotCurrent  = [];   // [{ x, y, opacity }]          — текущее состояние
   let dotAnimRAF    = null;
-  let hlIndex       = null;   /* индекс подсвеченного датасета (-1 = нет) */
-  let hlWidths      = [];     /* текущие анимируемые borderWidth для каждого датасета */
-  let hlAnimRAF     = null;
-
-  const HL_WIDTH    = 3.0;    /* толщина при ховере */
-  const BASE_WIDTH  = 1.5;    /* нормальная толщина */
-  const HL_SPEED    = 0.14;   /* скорость интерполяции */
+  let hlIndex    = null;
+  let hlAlpha    = 0;       /* текущая прозрачность оверлея (0..1) */
+  let hlAnimRAF  = null;
+  const HL_SPEED = 0.14;
 
   function animateHL() {
     hlAnimRAF = null;
     if (!chart) return;
-    let needsRedraw = false;
-    let changed = false;
-    
-    chart.data.datasets.forEach((ds, i) => {
-      const target = (hlIndex === i) ? HL_WIDTH : BASE_WIDTH;
-      const cur    = hlWidths[i] ?? BASE_WIDTH;
-      const diff   = target - cur;
-      if (Math.abs(diff) > 0.005) {
-        hlWidths[i]    = cur + diff * HL_SPEED;
-        needsRedraw    = true;
-        changed = true;
-      } else if (Math.abs(diff) > 0) {
-        hlWidths[i]    = target;
-        changed = true;
-      }
-    });
-    
-    if (changed) {
-      chart.data.datasets.forEach((ds, i) => {
-        ds.borderWidth = hlWidths[i] ?? BASE_WIDTH;
-      });
-      chart.update('none');
-    }
-    
-    if (needsRedraw) {
-      hlAnimRAF = requestAnimationFrame(animateHL);
+    const target = hlIndex !== null ? 1 : 0;
+    const diff   = target - hlAlpha;
+    if (Math.abs(diff) > 0.008) {
+      hlAlpha   += diff * HL_SPEED;
+      chart.draw();
+      hlAnimRAF  = requestAnimationFrame(animateHL);
+    } else {
+      hlAlpha = target;
+      chart.draw();
     }
   }
 
@@ -597,6 +576,26 @@ const PALETTE = [
         ctx.globalAlpha = 1;
       });
 
+      /* highlight линии при ховере на карточку */
+      if (hlIndex !== null && hlAlpha > 0.01) {
+        const ds   = ch.data.datasets[hlIndex];
+        const meta = ch.getDatasetMeta(hlIndex);
+        if (ds && ch.isDatasetVisible(hlIndex) && meta.data.length) {
+          ctx.save();
+          ctx.globalAlpha = hlAlpha;
+          ctx.strokeStyle = ds.borderColor;
+          ctx.lineWidth   = 3.5;
+          ctx.lineJoin    = 'round';
+          ctx.lineCap     = 'round';
+          ctx.beginPath();
+          meta.data.forEach((pt, pi) => {
+            pi === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+          });
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
       ctx.restore();
     }
   });
@@ -609,7 +608,7 @@ const PALETTE = [
 
     if (chart) { chart.destroy(); chart = null; }
     crosshairX = crosshairY = crosshairIndex = null;
-    dotTargets = []; dotCurrent = []; hlWidths = []; hlIndex = null;
+    dotTargets = []; dotCurrent = []; hlIndex = null; hlAlpha = 0;
     if (dotAnimRAF) { cancelAnimationFrame(dotAnimRAF); dotAnimRAF = null; }
     if (hlAnimRAF)  { cancelAnimationFrame(hlAnimRAF);  hlAnimRAF  = null; }
 
@@ -698,7 +697,6 @@ const PALETTE = [
     /* инициализируем состояние точек */
     dotTargets  = creditors.map(() => ({ x: 0, y: 0, visible: false }));
     dotCurrent  = creditors.map(() => ({ x: 0, y: 0, opacity: 0 }));
-    hlWidths    = creditors.map(() => BASE_WIDTH);
 
     chart = new Chart(document.getElementById('debtChart'), {
       type: 'line',
