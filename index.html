@@ -473,74 +473,7 @@ const PALETTE = [
   let crosshairY        = null;
   let crosshairIndex    = null;
 
-  /* ── п.2: анимация точек на графике ──
-     Храним текущие и целевые позиции точек, анимируем через rAF            */
-  let dotTargets  = [];   // [{ x, y, color, visible }]  — куда двигаться
-  let dotCurrent  = [];   // [{ x, y, opacity }]          — текущее состояние
-  let dotAnimRAF    = null;
-  let hlIndex    = null;
-  let hlAlpha    = 0;       /* текущая прозрачность оверлея (0..1) */
-  let hlAnimRAF  = null;
-  const HL_SPEED = 0.14;
-
-  function animateHL() {
-    hlAnimRAF = null;
-    if (!chart) return;
-    const target = hlIndex !== null ? 1 : 0;
-    const diff   = target - hlAlpha;
-    if (Math.abs(diff) > 0.008) {
-      hlAlpha   += diff * HL_SPEED;
-      chart.draw();
-      hlAnimRAF  = requestAnimationFrame(animateHL);
-    } else {
-      hlAlpha = target;
-      chart.draw();
-    }
-  }
-
-  function scheduleHL() {
-    if (!hlAnimRAF) hlAnimRAF = requestAnimationFrame(animateHL);
-  }
-
-  const DOT_FADE_IN  = 0.18;   // скорость появления opacity
-  const DOT_FADE_OUT = 0.14;   // скорость исчезновения opacity
-
-  function animateDots() {
-    dotAnimRAF = null;
-    if (!chart) return;
-
-    let needsRedraw = false;
-
-    dotCurrent.forEach((cur, i) => {
-      const tgt = dotTargets[i];
-      if (!tgt) return;
-
-      const targetOpacity = tgt.visible ? 1 : 0;
-      const dOpacity = targetOpacity - cur.opacity;
-
-      if (Math.abs(dOpacity) > 0.005) {
-        cur.opacity += dOpacity * (tgt.visible ? DOT_FADE_IN : DOT_FADE_OUT);
-        needsRedraw = true;
-      } else {
-        cur.opacity = targetOpacity;
-      }
-
-      /* позиция — всегда мгновенно, без интерполяции */
-      if (tgt.visible && tgt.x !== null) {
-        cur.x = tgt.x;
-        cur.y = tgt.y;
-      }
-    });
-
-    if (needsRedraw) {
-      chart.draw();
-      dotAnimRAF = requestAnimationFrame(animateDots);
-    }
-  }
-
-  function scheduleDotAnim() {
-    if (!dotAnimRAF) dotAnimRAF = requestAnimationFrame(animateDots);
-  }
+  let hlIndex     = null;
 
   Chart.register({
     id: 'crosshair',
@@ -548,29 +481,8 @@ const PALETTE = [
       const { ctx, chartArea: { bottom } } = ch;
       const c = themeColors();
 
-      /* highlight линии при ховере на карточку — независимо от crosshair */
-      if (hlIndex !== null && hlAlpha > 0.01) {
-        const ds   = ch.data.datasets[hlIndex];
-        const meta = ch.getDatasetMeta(hlIndex);
-        if (ds && ch.isDatasetVisible(hlIndex) && meta.data.length) {
-          ctx.save();
-          ctx.globalAlpha = hlAlpha;
-          ctx.strokeStyle = ds.borderColor;
-          ctx.lineWidth   = 3.5;
-          ctx.lineJoin    = 'round';
-          ctx.lineCap     = 'round';
-          ctx.beginPath();
-          meta.data.forEach((pt, pi) => {
-            pi === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
-          });
-          ctx.stroke();
-          ctx.restore();
-        }
-      }
-
       if (crosshairX === null) return;
 
-      /* вертикальная линия */
       ctx.save();
       ctx.setLineDash([4, 5]);
       ctx.lineWidth   = 1;
@@ -581,20 +493,21 @@ const PALETTE = [
       ctx.stroke();
       ctx.setLineDash([]);
 
-      /* анимированные точки */
-      dotCurrent.forEach((cur, i) => {
-        if (cur.opacity <= 0.01) return;
-        const ds = ch.data.datasets[i];
-        if (!ds || !ch.isDatasetVisible(i)) return;
-        ctx.globalAlpha = cur.opacity;
+      /* точки пересечения */
+      ch.data.datasets.forEach((ds, di) => {
+        if (!ch.isDatasetVisible(di)) return;
+        const meta = ch.getDatasetMeta(di);
+        const idx  = crosshairIndex;
+        if (idx === null) return;
+        const pt = meta.data[idx];
+        if (!pt) return;
         ctx.beginPath();
-        ctx.arc(cur.x, cur.y, 4, 0, Math.PI * 2);
+        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
         ctx.fillStyle   = c.dotFill;
         ctx.fill();
         ctx.strokeStyle = ds.borderColor;
         ctx.lineWidth   = 1.5;
         ctx.stroke();
-        ctx.globalAlpha = 1;
       });
 
       ctx.restore();
@@ -609,9 +522,7 @@ const PALETTE = [
 
     if (chart) { chart.destroy(); chart = null; }
     crosshairX = crosshairY = crosshairIndex = null;
-    dotTargets = []; dotCurrent = []; hlIndex = null; hlAlpha = 0;
-    if (dotAnimRAF) { cancelAnimationFrame(dotAnimRAF); dotAnimRAF = null; }
-    if (hlAnimRAF)  { cancelAnimationFrame(hlAnimRAF);  hlAnimRAF  = null; }
+    hlIndex = null;
 
     const canvasParent = document.getElementById('debtChart').parentElement;
     if (mouseleaveHandler) {
@@ -688,16 +599,12 @@ const PALETTE = [
       data:             entries.map(e => e[cr.label] || 0),
       borderColor:      cr.color,
       backgroundColor:  cr.color + '22',
-      borderWidth:      1.5,
+      borderWidth:      ctx => ctx.datasetIndex === hlIndex ? 3 : 1.5,
       pointRadius:      0,
       pointHoverRadius: 0,
       fill:             currentFill(),
       tension:          0.35,
     }));
-
-    /* инициализируем состояние точек */
-    dotTargets  = creditors.map(() => ({ x: 0, y: 0, visible: false }));
-    dotCurrent  = creditors.map(() => ({ x: 0, y: 0, opacity: 0 }));
 
     chart = new Chart(document.getElementById('debtChart'), {
       type: 'line',
@@ -705,7 +612,11 @@ const PALETTE = [
       options: {
         responsive:          true,
         maintainAspectRatio: false,
-        animation:           { duration: 900, easing: 'easeOutQuart', x: { from: 0 } },
+        animation:           { duration: 0 },
+        transitions: {
+          active:  { animation: { duration: 250 } },
+          default: { animation: { duration: 0   } },
+        },
         interaction:         { mode: 'index', intersect: false },
         plugins: {
           legend:  { display: false },
@@ -732,9 +643,6 @@ const PALETTE = [
             /* скрываем тултип */
             tooltipBox.classList.remove('visible');
             crosshairX = crosshairY = crosshairIndex = null;
-            /* гасим точки */
-            dotTargets.forEach(t => { t.visible = false; });
-            scheduleDotAnim();
             ch.draw();
             return;
           }
@@ -746,26 +654,6 @@ const PALETTE = [
             if (!ch.isDatasetVisible(di)) return Infinity;
             return ch.getDatasetMeta(di).data[idx]?.y ?? Infinity;
           }));
-
-          /* обновляем цели для точек */
-          ch.data.datasets.forEach((ds, di) => {
-            if (!ch.isDatasetVisible(di)) {
-              dotTargets[di].visible = false;
-              return;
-            }
-            const pt = ch.getDatasetMeta(di).data[idx];
-            if (!pt) { dotTargets[di].visible = false; return; }
-
-            /* если точка ещё не была видна — ставим начальную позицию сразу */
-            if (!dotTargets[di].visible) {
-              dotCurrent[di].x = pt.x;
-              dotCurrent[di].y = pt.y;
-            }
-            dotTargets[di].x       = pt.x;
-            dotTargets[di].y       = pt.y;
-            dotTargets[di].visible = true;
-          });
-          scheduleDotAnim();
           ch.draw();
 
           /* ── тултип ── */
@@ -826,8 +714,6 @@ const PALETTE = [
     mouseleaveHandler  = () => {
       tooltipBox.classList.remove('visible');
       crosshairX = crosshairY = crosshairIndex = null;
-      dotTargets.forEach(t => { t.visible = false; });
-      scheduleDotAnim();
       chart.draw();
     };
     canvasParent.addEventListener('mouseleave', mouseleaveHandler);
@@ -865,10 +751,10 @@ const PALETTE = [
         <div class="pc-pct">${pctPaid}% погашено</div>`;
       card.addEventListener('click', () => toggleDataset(i, cr));
       card.addEventListener('mouseenter', () => {
-        if (!hidden[cr.label]) { hlIndex = i; scheduleHL(); }
+        if (!hidden[cr.label]) { hlIndex = i; chart.update('active'); }
       });
       card.addEventListener('mouseleave', () => {
-        hlIndex = null; scheduleHL();
+        hlIndex = null; chart.update('active');
       });
       cardsEl.appendChild(card);
       cardEls.push(card);
